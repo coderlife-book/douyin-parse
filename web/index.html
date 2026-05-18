@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>抖音本地下载服务</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --ink: #1b1a17;
+      --muted: #716b60;
+      --line: rgba(27, 26, 23, 0.14);
+      --panel: rgba(255, 252, 245, 0.86);
+      --panel-strong: #fffaf0;
+      --accent: #d94f30;
+      --accent-dark: #ad351d;
+      --green: #26705b;
+      --shadow: 0 24px 80px rgba(60, 42, 20, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "Iowan Old Style", "Songti SC", "Noto Serif SC", serif;
+      background:
+        radial-gradient(circle at 18% 14%, rgba(217, 79, 48, 0.18), transparent 28rem),
+        radial-gradient(circle at 88% 18%, rgba(38, 112, 91, 0.16), transparent 24rem),
+        linear-gradient(135deg, #f8f1e5 0%, var(--bg) 52%, #e9ded0 100%);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 44px 0;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .brand,
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      position: relative;
+      overflow: hidden;
+      min-height: 360px;
+      padding: 38px;
+      border-radius: 34px;
+    }
+
+    .brand::after {
+      content: "";
+      position: absolute;
+      right: -80px;
+      bottom: -120px;
+      width: 340px;
+      height: 340px;
+      border: 1px solid rgba(217, 79, 48, 0.28);
+      border-radius: 50%;
+      background: repeating-linear-gradient(45deg, rgba(217, 79, 48, 0.09) 0 10px, transparent 10px 20px);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.44);
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 6px rgba(38, 112, 91, 0.12);
+    }
+
+    h1 {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+      margin: 46px 0 18px;
+      font-size: clamp(46px, 7vw, 86px);
+      line-height: 0.92;
+      letter-spacing: -0.06em;
+    }
+
+    .subtitle {
+      position: relative;
+      z-index: 1;
+      max-width: 620px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.8;
+    }
+
+    .panel {
+      padding: 24px;
+      border-radius: 28px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 20px;
+      background: var(--panel-strong);
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 21px;
+      letter-spacing: -0.02em;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .row.wrap {
+      flex-wrap: wrap;
+    }
+
+    input {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      padding: 0 14px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.7);
+      font: 15px/1.3 "Menlo", "PingFang SC", sans-serif;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: rgba(217, 79, 48, 0.72);
+      box-shadow: 0 0 0 4px rgba(217, 79, 48, 0.12);
+    }
+
+    button {
+      min-height: 48px;
+      border: 0;
+      border-radius: 15px;
+      padding: 0 18px;
+      color: white;
+      background: var(--ink);
+      font: 700 15px/1 "PingFang SC", sans-serif;
+      cursor: pointer;
+      transition: transform 0.16s ease, background 0.16s ease, opacity 0.16s ease;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+      transform: none;
+    }
+
+    button.loading {
+      position: relative;
+      color: rgba(255, 255, 255, 0.74);
+      pointer-events: none;
+    }
+
+    button.loading::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 14px;
+      width: 14px;
+      height: 14px;
+      margin-top: -7px;
+      border: 2px solid rgba(255, 255, 255, 0.38);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .status {
+      min-height: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .status.ok {
+      color: var(--green);
+    }
+
+    .status.bad {
+      color: var(--accent-dark);
+    }
+
+    .quality-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .quality-picker {
+      position: relative;
+      display: grid;
+      gap: 8px;
+      min-height: 74px;
+      padding: 12px 14px 10px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.44)),
+        radial-gradient(circle at 92% 12%, rgba(217, 79, 48, 0.12), transparent 7rem);
+    }
+
+    .quality-picker.disabled {
+      opacity: 0.58;
+    }
+
+    .quality-head {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .quality-title {
+      color: var(--muted);
+      font: 700 12px/1 "PingFang SC", sans-serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .quality-badge {
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: var(--accent-dark);
+      background: rgba(217, 79, 48, 0.1);
+      font: 700 12px/1 "Menlo", monospace;
+    }
+
+    .quality-options {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 8px;
+    }
+
+    .quality-option {
+      display: grid;
+      gap: 5px;
+      min-height: 64px;
+      padding: 11px 12px;
+      border: 1px solid rgba(27, 26, 23, 0.12);
+      border-radius: 15px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.58);
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .quality-option:hover {
+      transform: translateY(-1px);
+      border-color: rgba(217, 79, 48, 0.36);
+    }
+
+    .quality-option.active {
+      border-color: rgba(217, 79, 48, 0.72);
+      background: linear-gradient(135deg, rgba(217, 79, 48, 0.16), rgba(255, 255, 255, 0.72));
+      box-shadow: 0 10px 28px rgba(217, 79, 48, 0.14);
+    }
+
+    .quality-option-main {
+      font: 800 18px/1 "PingFang SC", sans-serif;
+      letter-spacing: -0.02em;
+    }
+
+    .quality-option-sub {
+      color: var(--muted);
+      font: 12px/1.3 "Menlo", "PingFang SC", sans-serif;
+    }
+
+    .quality-summary {
+      min-height: 18px;
+      color: var(--muted);
+      font: 13px/1.4 "PingFang SC", sans-serif;
+    }
+
+    .download-progress {
+      display: none;
+      gap: 8px;
+      margin-top: -4px;
+    }
+
+    .download-progress.show {
+      display: grid;
+    }
+
+    .progress-track {
+      overflow: hidden;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(27, 26, 23, 0.1);
+      box-shadow: inset 0 1px 2px rgba(27, 26, 23, 0.08);
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), #f0a33f);
+      transition: width 0.2s ease;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font: 12px/1.4 "Menlo", "PingFang SC", sans-serif;
+    }
+
+    .qr-box {
+      display: grid;
+      min-height: 250px;
+      place-items: center;
+      border: 1px dashed rgba(27, 26, 23, 0.22);
+      border-radius: 20px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.12)),
+        repeating-linear-gradient(90deg, rgba(27, 26, 23, 0.03) 0 1px, transparent 1px 12px);
+    }
+
+    .qr-box img {
+      width: 210px;
+      height: 210px;
+      border-radius: 14px;
+      background: white;
+      box-shadow: 0 18px 42px rgba(27, 26, 23, 0.16);
+    }
+
+    .meta {
+      display: none;
+      grid-template-columns: 96px 1fr;
+      gap: 14px;
+      align-items: start;
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.52);
+    }
+
+    .meta.show {
+      display: grid;
+    }
+
+    .cover {
+      width: 96px;
+      height: 128px;
+      object-fit: cover;
+      border-radius: 14px;
+      background: #e6ded2;
+    }
+
+    .desc {
+      margin: 0 0 10px;
+      font: 700 16px/1.5 "PingFang SC", sans-serif;
+    }
+
+    .small {
+      color: var(--muted);
+      font: 13px/1.7 "PingFang SC", sans-serif;
+    }
+
+    .footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .shell {
+        padding: 20px 0;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .quality-row {
+        grid-template-columns: 1fr;
+      }
+
+      .brand {
+        min-height: auto;
+        padding: 28px;
+      }
+
+      h1 {
+        margin-top: 34px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="brand">
+        <div class="eyebrow"><span class="dot"></span><span>127.0.0.1 本地服务</span></div>
+        <h1>扫码登录，直接下载视频。</h1>
+        <p class="subtitle">这个页面只调用当前机器上的 API 服务。Cookie 保存在本机，视频解析和下载都通过本地进程完成。</p>
+      </div>
+
+      <div class="panel stack">
+        <section class="card stack">
+          <h2>1. 服务状态</h2>
+          <div class="row">
+            <input id="apiToken" type="password" placeholder="可选：DOUYIN_PARSE_API_TOKEN">
+            <button id="saveTokenBtn">保存</button>
+          </div>
+          <div id="healthStatus" class="status">正在检查本地服务...</div>
+        </section>
+
+        <section class="card stack">
+          <h2>2. 扫码登录</h2>
+          <div class="row wrap">
+            <button id="loginBtn" class="primary">生成二维码</button>
+            <button id="refreshStatusBtn">刷新状态</button>
+          </div>
+          <div id="loginStatus" class="status">未创建扫码会话</div>
+          <div class="qr-box" id="qrBox">二维码会显示在这里</div>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel stack" style="margin-top: 22px;">
+      <section class="card stack">
+        <h2>3. 输入链接并选择清晰度</h2>
+        <div class="row">
+          <input id="videoUrl" placeholder="粘贴抖音分享链接，例如 https://v.douyin.com/..." autocomplete="off">
+          <button id="parseBtn">解析清晰度</button>
+        </div>
+        <div class="quality-row">
+          <div id="qualityPicker" class="quality-picker disabled">
+            <div class="quality-head">
+              <span class="quality-title">Quality</span>
+              <span id="qualityBadge" class="quality-badge">待解析</span>
+            </div>
+            <div id="qualityOptions" class="quality-options">
+              <button class="quality-option" type="button" disabled>
+                <span class="quality-option-main">待解析</span>
+                <span class="quality-option-sub">先解析视频</span>
+              </button>
+            </div>
+            <div id="qualitySummary" class="quality-summary">解析后可选择具体清晰度和码率</div>
+          </div>
+          <button id="downloadBtn" class="primary" disabled>下载视频</button>
+        </div>
+        <div id="downloadStatus" class="status">等待输入链接</div>
+        <div id="downloadProgress" class="download-progress">
+          <div class="progress-track">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <div class="progress-meta">
+            <span id="progressText">0%</span>
+            <span id="progressBytes">等待下载</span>
+          </div>
+        </div>
+        <div id="videoMeta" class="meta">
+          <img id="cover" class="cover" alt="视频封面">
+          <div>
+            <p id="desc" class="desc"></p>
+            <div id="author" class="small"></div>
+            <div id="aweme" class="small"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <div class="footer">服务地址：<code>http://127.0.0.1:8787</code></div>
+  </main>
+
+  <script>
+    const state = {
+      sessionId: "",
+      pollTimer: 0,
+      token: localStorage.getItem("douyinParseToken") || "",
+      parsed: null,
+      selectedQuality: "",
+    };
+
+    const el = {
+      apiToken: document.getElementById("apiToken"),
+      saveTokenBtn: document.getElementById("saveTokenBtn"),
+      healthStatus: document.getElementById("healthStatus"),
+      loginBtn: document.getElementById("loginBtn"),
+      refreshStatusBtn: document.getElementById("refreshStatusBtn"),
+      loginStatus: document.getElementById("loginStatus"),
+      qrBox: document.getElementById("qrBox"),
+      videoUrl: document.getElementById("videoUrl"),
+      parseBtn: document.getElementById("parseBtn"),
+      qualityPicker: document.getElementById("qualityPicker"),
+      qualityOptions: document.getElementById("qualityOptions"),
+      qualityBadge: document.getElementById("qualityBadge"),
+      qualitySummary: document.getElementById("qualitySummary"),
+      downloadBtn: document.getElementById("downloadBtn"),
+      downloadStatus: document.getElementById("downloadStatus"),
+      downloadProgress: document.getElementById("downloadProgress"),
+      progressFill: document.getElementById("progressFill"),
+      progressText: document.getElementById("progressText"),
+      progressBytes: document.getElementById("progressBytes"),
+      videoMeta: document.getElementById("videoMeta"),
+      cover: document.getElementById("cover"),
+      desc: document.getElementById("desc"),
+      author: document.getElementById("author"),
+      aweme: document.getElementById("aweme"),
+    };
+
+    el.apiToken.value = state.token;
+
+    function headers(json = false) {
+      const value = {};
+      if (json) value["Content-Type"] = "application/json";
+      if (state.token) value["X-Api-Token"] = state.token;
+      return value;
+    }
+
+    function setStatus(node, message, type = "") {
+      node.textContent = message;
+      node.className = `status ${type}`.trim();
+    }
+
+    async function requestJson(url, options = {}) {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) {
+        throw new Error(data.detail || `请求失败：${response.status}`);
+      }
+      return data;
+    }
+
+    async function checkHealth() {
+      try {
+        const data = await requestJson("/health", { headers: headers() });
+        setStatus(
+          el.healthStatus,
+          data.has_cookie ? "服务正常，已检测到本机 Cookie" : "服务正常，尚未登录",
+          "ok",
+        );
+      } catch (error) {
+        setStatus(el.healthStatus, error.message, "bad");
+      }
+    }
+
+    async function createLoginSession() {
+      el.loginBtn.disabled = true;
+      setStatus(el.loginStatus, "正在创建扫码会话...");
+      el.qrBox.textContent = "二维码加载中...";
+      try {
+        const data = await requestJson("/auth/session", {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ qr_timeout: 30 }),
+        });
+        state.sessionId = data.session_id;
+        renderLogin(data);
+        startPolling();
+      } catch (error) {
+        setStatus(el.loginStatus, error.message, "bad");
+        el.qrBox.textContent = "二维码创建失败";
+      } finally {
+        el.loginBtn.disabled = false;
+      }
+    }
+
+    async function refreshLoginStatus() {
+      if (!state.sessionId) {
+        setStatus(el.loginStatus, "还没有扫码会话，请先生成二维码", "bad");
+        return;
+      }
+      try {
+        const data = await requestJson(`/auth/session/${state.sessionId}`, { headers: headers() });
+        renderLogin(data);
+        if (data.status === "logged_in") {
+          clearInterval(state.pollTimer);
+          await checkHealth();
+        }
+      } catch (error) {
+        setStatus(el.loginStatus, error.message, "bad");
+      }
+    }
+
+    function renderLogin(data) {
+      const type = data.status === "logged_in" ? "ok" : data.status === "failed" || data.status === "expired" ? "bad" : "";
+      setStatus(el.loginStatus, `${data.message}（${data.status}）`, type);
+      if (data.qr_image) {
+        el.qrBox.innerHTML = `<img src="${data.qr_image}" alt="抖音登录二维码">`;
+      }
+    }
+
+    function startPolling() {
+      clearInterval(state.pollTimer);
+      state.pollTimer = setInterval(refreshLoginStatus, 2000);
+    }
+
+    async function parseVideo() {
+      const url = el.videoUrl.value.trim();
+      if (!url) {
+        setStatus(el.downloadStatus, "请先输入抖音链接", "bad");
+        return;
+      }
+      el.parseBtn.disabled = true;
+      el.downloadBtn.disabled = true;
+      setStatus(el.downloadStatus, "正在解析视频和清晰度...");
+      try {
+        const data = await requestJson("/parse/video", {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ url, session_id: state.sessionId || null }),
+        });
+        state.parsed = data;
+        renderVideo(data);
+        setStatus(el.downloadStatus, "解析完成，请选择清晰度后下载", "ok");
+      } catch (error) {
+        setStatus(el.downloadStatus, error.message, "bad");
+      } finally {
+        el.parseBtn.disabled = false;
+      }
+    }
+
+    function renderVideo(data) {
+      el.qualityOptions.innerHTML = "";
+      const qualities = data.qualities || [];
+      state.selectedQuality = "";
+      if (!qualities.length) {
+        addQualityOption({ ratio: "", bit_rate: 0, quality_label: "默认清晰度" }, true);
+      } else {
+        state.selectedQuality = qualities[0].ratio || "";
+        qualities.forEach((quality, index) => addQualityOption(quality, index === 0));
+      }
+      el.qualityPicker.classList.remove("disabled");
+      el.downloadBtn.disabled = false;
+      updateQualitySummary();
+
+      el.videoMeta.classList.add("show");
+      el.cover.src = data.cover_url || "";
+      el.cover.style.display = data.cover_url ? "block" : "none";
+      el.desc.textContent = data.desc || "无标题视频";
+      el.author.textContent = data.author_nickname ? `作者：${data.author_nickname}` : "作者：未知";
+      el.aweme.textContent = data.aweme_id ? `视频 ID：${data.aweme_id}` : "";
+    }
+
+    function addQualityOption(quality, active) {
+      const button = document.createElement("button");
+      const ratio = quality.ratio || "";
+      const bitrate = quality.bit_rate ? `${Math.round(quality.bit_rate / 1000)} Kbps` : "码率未知";
+      button.type = "button";
+      button.className = `quality-option${active ? " active" : ""}`;
+      button.dataset.quality = ratio;
+      button.innerHTML = `
+        <span class="quality-option-main">${quality.quality_label || ratio || "默认清晰度"}</span>
+        <span class="quality-option-sub">${bitrate}</span>
+      `;
+      button.addEventListener("click", () => {
+        state.selectedQuality = ratio;
+        el.qualityOptions.querySelectorAll(".quality-option").forEach(item => item.classList.remove("active"));
+        button.classList.add("active");
+        updateQualitySummary();
+      });
+      el.qualityOptions.appendChild(button);
+    }
+
+    function updateQualitySummary() {
+      const qualities = (state.parsed && state.parsed.qualities) || [];
+      const current = qualities.find(quality => (quality.ratio || "") === state.selectedQuality) || qualities[0];
+      if (!current) {
+        el.qualityBadge.textContent = "默认";
+        el.qualitySummary.textContent = "使用解析接口返回的默认下载地址";
+        return;
+      }
+
+      el.qualityBadge.textContent = current.ratio || "默认";
+      const bitrate = current.bit_rate ? `${Math.round(current.bit_rate / 1000)} Kbps` : "码率未知";
+      const gear = current.gear_name ? ` · ${current.gear_name}` : "";
+      el.qualitySummary.textContent = `${bitrate}${gear}`;
+    }
+
+    function setDownloadLoading(loading) {
+      el.downloadBtn.disabled = loading;
+      el.downloadBtn.classList.toggle("loading", loading);
+      el.downloadBtn.textContent = loading ? "下载中" : "下载视频";
+    }
+
+    function updateProgress(task) {
+      const progress = Math.max(0, Math.min(100, task.progress || 0));
+      el.downloadProgress.classList.add("show");
+      el.progressFill.style.width = `${progress}%`;
+      el.progressText.textContent = `${progress}%`;
+      el.progressBytes.textContent = formatBytes(task.downloaded || 0, task.total || 0);
+    }
+
+    function hideProgress() {
+      el.downloadProgress.classList.remove("show");
+      el.progressFill.style.width = "0%";
+      el.progressText.textContent = "0%";
+      el.progressBytes.textContent = "等待下载";
+    }
+
+    function formatBytes(downloaded, total) {
+      if (!total) {
+        return downloaded ? `${formatByte(downloaded)} / 未知大小` : "准备下载";
+      }
+      return `${formatByte(downloaded)} / ${formatByte(total)}`;
+    }
+
+    function formatByte(value) {
+      if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+      if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${value} B`;
+    }
+
+    async function pollDownloadTask(taskId) {
+      for (;;) {
+        const task = await requestJson(`/download/video/task/${taskId}`, { headers: headers() });
+        updateProgress(task);
+        setStatus(el.downloadStatus, task.message || "正在下载视频");
+
+        if (task.status === "done") {
+          return task;
+        }
+        if (task.status === "failed") {
+          throw new Error(task.message || task.error || "下载失败");
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    async function saveTaskFile(taskId) {
+      const response = await fetch(`/download/video/task/${taskId}/file`, {
+        method: "GET",
+        headers: headers(),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || `保存失败：${response.status}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/);
+      const filename = decodeURIComponent((match && (match[1] || match[2])) || "douyin.mp4");
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      return filename;
+    }
+
+    async function downloadVideo() {
+      const url = el.videoUrl.value.trim();
+      if (!url) {
+        setStatus(el.downloadStatus, "请先输入抖音链接", "bad");
+        return;
+      }
+      setDownloadLoading(true);
+      hideProgress();
+      setStatus(el.downloadStatus, "正在创建下载任务...");
+      try {
+        const task = await requestJson("/download/video/task", {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({
+            url,
+            session_id: state.sessionId || null,
+            quality: state.selectedQuality || null,
+          }),
+        });
+        updateProgress(task);
+        const doneTask = await pollDownloadTask(task.task_id);
+        const filename = await saveTaskFile(doneTask.task_id);
+        setStatus(el.downloadStatus, `下载完成：${filename}`, "ok");
+      } catch (error) {
+        setStatus(el.downloadStatus, error.message, "bad");
+      } finally {
+        setDownloadLoading(false);
+      }
+    }
+
+    el.saveTokenBtn.addEventListener("click", async () => {
+      state.token = el.apiToken.value.trim();
+      localStorage.setItem("douyinParseToken", state.token);
+      await checkHealth();
+    });
+    el.loginBtn.addEventListener("click", createLoginSession);
+    el.refreshStatusBtn.addEventListener("click", refreshLoginStatus);
+    el.parseBtn.addEventListener("click", parseVideo);
+    el.downloadBtn.addEventListener("click", downloadVideo);
+    el.videoUrl.addEventListener("keydown", event => {
+      if (event.key === "Enter") parseVideo();
+    });
+
+    checkHealth();
+  </script>
+</body>
+</html>

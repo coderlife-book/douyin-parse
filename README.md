@@ -93,6 +93,58 @@ python qt_app.py          # 完整版
 python qt_app_slim.py     # 精简版
 ```
 
+### 方法三：本地 API 服务
+
+适合内嵌到本地应用中，通过 `localhost` 调用下载能力。
+
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 安装 Playwright 浏览器（扫码登录需要）
+python -m playwright install chromium
+
+# 3. 启动本地 API 服务
+python -m uvicorn api_server:app --host 127.0.0.1 --port 8787
+```
+
+启动后可直接打开：
+
+```text
+http://127.0.0.1:8787/
+```
+
+常用接口：
+
+```bash
+# 健康检查
+curl http://127.0.0.1:8787/health
+
+# 创建扫码登录会话，返回 session_id 和二维码 base64
+curl -X POST http://127.0.0.1:8787/auth/session \
+  -H 'Content-Type: application/json' \
+  -d '{"qr_timeout":30}'
+
+# 查询扫码状态
+curl http://127.0.0.1:8787/auth/session/<session_id>
+
+# 解析视频信息和可选清晰度
+curl -X POST http://127.0.0.1:8787/parse/video \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"抖音分享链接","session_id":"<session_id>"}'
+
+# 创建带进度的下载任务
+curl -X POST http://127.0.0.1:8787/download/video/task \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"抖音分享链接","session_id":"<session_id>","quality":"1080p"}'
+
+# 查询下载进度
+curl http://127.0.0.1:8787/download/video/task/<task_id>
+
+# 下载完成后获取 mp4 文件
+curl -o douyin.mp4 http://127.0.0.1:8787/download/video/task/<task_id>/file
+```
+
 ## 📖 使用说明
 
 ### 获取Cookie（完整版）

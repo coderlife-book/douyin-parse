@@ -1,0 +1,6 @@
+requests
+PySide6
+playwright
+gmssl
+fastapi
+uvicorn[standard]
