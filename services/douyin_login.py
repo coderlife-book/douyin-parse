@@ -36,31 +36,51 @@ def has_login_cookies(cookies: list[dict[str, Any]]) -> bool:
     return False
 
 
-def load_saved_cookie() -> str:
-    if os.path.exists(COOKIE_PATH):
-        with open(COOKIE_PATH, "r", encoding="utf-8") as file:
-            return file.read().lstrip("\ufeff").strip()
-
+def load_config() -> dict[str, Any]:
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as file:
                 data = json.load(file)
-            return (data.get("cookie") or "").lstrip("\ufeff").strip()
+            if isinstance(data, dict):
+                return data
         except Exception:
-            return ""
+            return {}
+
+    return {}
+
+
+def save_config(data: dict[str, Any]) -> None:
+    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def load_saved_cookie() -> str:
+    config = load_config()
+    cookie = (config.get("cookie") or "").lstrip("\ufeff").strip()
+    if cookie:
+        return cookie
+
+    if os.path.exists(COOKIE_PATH):
+        with open(COOKIE_PATH, "r", encoding="utf-8") as file:
+            legacy_cookie = file.read().lstrip("\ufeff").strip()
+        if legacy_cookie:
+            save_cookie(legacy_cookie, save_dir=config.get("save_dir") or DEFAULT_SAVE_DIR)
+            try:
+                os.remove(COOKIE_PATH)
+            except OSError:
+                pass
+            return legacy_cookie
 
     return ""
 
 
-def save_cookie(cookie: str, save_dir: str = DEFAULT_SAVE_DIR) -> None:
+def save_cookie(cookie: str, save_dir: str | None = None) -> None:
+    config = load_config()
     data = {
         "cookie": cookie,
-        "save_dir": save_dir,
+        "save_dir": save_dir or config.get("save_dir") or DEFAULT_SAVE_DIR,
     }
-    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
-    with open(COOKIE_PATH, "w", encoding="utf-8") as file:
-        file.write(cookie or "")
+    save_config(data)
 
 
 @dataclass

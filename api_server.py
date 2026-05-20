@@ -1,7 +1,6 @@
 import os
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -10,8 +9,6 @@ from services.douyin_login import LoginManager
 from services.download_service import download_video, parse_video_info
 from services.download_tasks import DownloadTaskManager
 
-
-API_TOKEN = os.environ.get("DOUYIN_PARSE_API_TOKEN", "")
 
 app = FastAPI(title="Douyin Parse Local API", version="1.0.0")
 login_manager = LoginManager()
@@ -42,26 +39,20 @@ class ParseVideoRequest(BaseModel):
     session_id: str | None = None
 
 
-def verify_api_token(x_api_token: Annotated[str | None, Header()] = None) -> None:
-    if API_TOKEN and x_api_token != API_TOKEN:
-        raise HTTPException(status_code=401, detail="无效的本地 API Token")
-
-
 @app.get("/")
 def index():
     return FileResponse(WEB_INDEX)
 
 
-@app.get("/health", dependencies=[Depends(verify_api_token)])
+@app.get("/health")
 def health() -> dict:
     return {
         "status": "ok",
         "has_cookie": bool(login_manager.get_cookie()),
-        "auth_required": bool(API_TOKEN),
     }
 
 
-@app.post("/auth/session", dependencies=[Depends(verify_api_token)])
+@app.post("/auth/session")
 def create_auth_session(payload: AuthSessionRequest) -> dict:
     session = login_manager.create_session(qr_timeout=payload.qr_timeout)
     snapshot = session.snapshot(include_qr=True)
@@ -70,7 +61,7 @@ def create_auth_session(payload: AuthSessionRequest) -> dict:
     return snapshot
 
 
-@app.get("/auth/session/{session_id}", dependencies=[Depends(verify_api_token)])
+@app.get("/auth/session/{session_id}")
 def get_auth_session(session_id: str) -> dict:
     session = login_manager.get_session(session_id)
     if not session:
@@ -78,7 +69,7 @@ def get_auth_session(session_id: str) -> dict:
     return session.snapshot(include_qr=True)
 
 
-@app.post("/parse/video", dependencies=[Depends(verify_api_token)])
+@app.post("/parse/video")
 def parse_video_api(payload: ParseVideoRequest) -> dict:
     cookie = login_manager.get_cookie(payload.session_id)
     if not cookie:
@@ -90,7 +81,7 @@ def parse_video_api(payload: ParseVideoRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/download/video", dependencies=[Depends(verify_api_token)])
+@app.post("/download/video")
 def download_video_api(payload: DownloadVideoRequest):
     cookie = login_manager.get_cookie(payload.session_id)
     if not cookie:
@@ -108,7 +99,7 @@ def download_video_api(payload: DownloadVideoRequest):
     )
 
 
-@app.post("/download/video/task", dependencies=[Depends(verify_api_token)])
+@app.post("/download/video/task")
 def create_download_video_task(payload: DownloadVideoRequest) -> dict:
     cookie = login_manager.get_cookie(payload.session_id)
     if not cookie:
@@ -122,7 +113,7 @@ def create_download_video_task(payload: DownloadVideoRequest) -> dict:
     return task.snapshot()
 
 
-@app.get("/download/video/task/{task_id}", dependencies=[Depends(verify_api_token)])
+@app.get("/download/video/task/{task_id}")
 def get_download_video_task(task_id: str) -> dict:
     task = download_task_manager.get_task(task_id)
     if not task:
@@ -130,7 +121,7 @@ def get_download_video_task(task_id: str) -> dict:
     return task.snapshot()
 
 
-@app.get("/download/video/task/{task_id}/file", dependencies=[Depends(verify_api_token)])
+@app.get("/download/video/task/{task_id}/file")
 def get_download_video_task_file(task_id: str):
     task = download_task_manager.get_task(task_id)
     if not task:

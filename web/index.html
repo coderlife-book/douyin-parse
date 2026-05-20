@@ -232,6 +232,93 @@
       color: var(--accent-dark);
     }
 
+    .ready-panel {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .ready-panel.ok {
+      border-color: rgba(38, 112, 91, 0.28);
+      background: rgba(38, 112, 91, 0.08);
+    }
+
+    .ready-panel.waiting {
+      border-color: rgba(217, 79, 48, 0.28);
+      background: rgba(217, 79, 48, 0.08);
+    }
+
+    .ready-panel.bad {
+      border-color: rgba(173, 53, 29, 0.32);
+      background: rgba(173, 53, 29, 0.08);
+    }
+
+    .ready-head {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .ready-dot {
+      flex: 0 0 auto;
+      width: 12px;
+      height: 12px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 6px rgba(113, 107, 96, 0.1);
+    }
+
+    .ready-panel.ok .ready-dot {
+      background: var(--green);
+      box-shadow: 0 0 0 6px rgba(38, 112, 91, 0.14);
+    }
+
+    .ready-panel.waiting .ready-dot,
+    .ready-panel.bad .ready-dot {
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(217, 79, 48, 0.14);
+    }
+
+    .ready-title {
+      margin: 0 0 5px;
+      font: 800 18px/1.3 "PingFang SC", sans-serif;
+    }
+
+    .ready-desc {
+      margin: 0;
+      color: var(--muted);
+      font: 13px/1.6 "PingFang SC", sans-serif;
+    }
+
+    .ready-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .ready-item {
+      display: grid;
+      gap: 4px;
+      min-height: 58px;
+      padding: 10px 12px;
+      border: 1px solid rgba(27, 26, 23, 0.1);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.48);
+    }
+
+    .ready-label {
+      color: var(--muted);
+      font: 12px/1.2 "PingFang SC", sans-serif;
+    }
+
+    .ready-value {
+      font: 700 14px/1.35 "PingFang SC", sans-serif;
+    }
+
     .quality-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -430,6 +517,10 @@
         grid-template-columns: 1fr;
       }
 
+      .ready-grid {
+        grid-template-columns: 1fr;
+      }
+
       .brand {
         min-height: auto;
         padding: 28px;
@@ -453,9 +544,24 @@
       <div class="panel stack">
         <section class="card stack">
           <h2>1. 服务状态</h2>
-          <div class="row">
-            <input id="apiToken" type="password" placeholder="可选：DOUYIN_PARSE_API_TOKEN">
-            <button id="saveTokenBtn">保存</button>
+          <div id="readyPanel" class="ready-panel">
+            <div class="ready-head">
+              <span class="ready-dot"></span>
+              <div>
+                <p id="readyTitle" class="ready-title">正在检查当前态</p>
+                <p id="readyDesc" class="ready-desc">需要确认本地服务和本机 Cookie 后，才能判断是否可以直接下载。</p>
+              </div>
+            </div>
+            <div class="ready-grid">
+              <div class="ready-item">
+                <span class="ready-label">本地服务</span>
+                <span id="serviceValue" class="ready-value">检查中</span>
+              </div>
+              <div class="ready-item">
+                <span class="ready-label">本地 Cookie</span>
+                <span id="cookieValue" class="ready-value">检查中</span>
+              </div>
+            </div>
           </div>
           <div id="healthStatus" class="status">正在检查本地服务...</div>
         </section>
@@ -477,7 +583,7 @@
         <h2>3. 输入链接并选择清晰度</h2>
         <div class="row">
           <input id="videoUrl" placeholder="粘贴抖音分享链接，例如 https://v.douyin.com/..." autocomplete="off">
-          <button id="parseBtn">解析清晰度</button>
+          <button id="parseBtn" disabled>解析清晰度</button>
         </div>
         <div class="quality-row">
           <div id="qualityPicker" class="quality-picker disabled">
@@ -523,14 +629,18 @@
     const state = {
       sessionId: "",
       pollTimer: 0,
-      token: localStorage.getItem("douyinParseToken") || "",
+      serviceOnline: false,
+      hasCookie: false,
       parsed: null,
       selectedQuality: "",
     };
 
     const el = {
-      apiToken: document.getElementById("apiToken"),
-      saveTokenBtn: document.getElementById("saveTokenBtn"),
+      readyPanel: document.getElementById("readyPanel"),
+      readyTitle: document.getElementById("readyTitle"),
+      readyDesc: document.getElementById("readyDesc"),
+      serviceValue: document.getElementById("serviceValue"),
+      cookieValue: document.getElementById("cookieValue"),
       healthStatus: document.getElementById("healthStatus"),
       loginBtn: document.getElementById("loginBtn"),
       refreshStatusBtn: document.getElementById("refreshStatusBtn"),
@@ -555,18 +665,52 @@
       aweme: document.getElementById("aweme"),
     };
 
-    el.apiToken.value = state.token;
-
     function headers(json = false) {
       const value = {};
       if (json) value["Content-Type"] = "application/json";
-      if (state.token) value["X-Api-Token"] = state.token;
       return value;
     }
 
     function setStatus(node, message, type = "") {
       node.textContent = message;
       node.className = `status ${type}`.trim();
+    }
+
+    function setReadyState({ serviceOnline, hasCookie, message = "" }) {
+      state.serviceOnline = serviceOnline;
+      state.hasCookie = hasCookie;
+      el.readyPanel.className = "ready-panel";
+
+      if (!serviceOnline) {
+        el.readyPanel.classList.add("bad");
+        el.readyTitle.textContent = "本地服务不可用";
+        el.readyDesc.textContent = message || "请先启动本地服务，再回到页面重试。";
+        el.serviceValue.textContent = "离线";
+        el.cookieValue.textContent = "无法检查";
+        el.loginBtn.disabled = true;
+        el.parseBtn.disabled = true;
+        el.downloadBtn.disabled = true;
+        return;
+      }
+
+      el.loginBtn.disabled = false;
+      el.serviceValue.textContent = "在线";
+      if (hasCookie) {
+        el.readyPanel.classList.add("ok");
+        el.readyTitle.textContent = "当前可以直接解析和下载";
+        el.readyDesc.textContent = "已检测到本机 Cookie，可直接粘贴抖音链接解析清晰度。";
+        el.cookieValue.textContent = "已检测";
+        el.parseBtn.disabled = false;
+        el.downloadBtn.disabled = !state.parsed;
+        return;
+      }
+
+      el.readyPanel.classList.add("waiting");
+      el.readyTitle.textContent = "需要先扫码登录";
+      el.readyDesc.textContent = "当前没有可用的本地 Cookie，请生成二维码并用抖音扫码后再下载。";
+      el.cookieValue.textContent = "未检测";
+      el.parseBtn.disabled = true;
+      el.downloadBtn.disabled = true;
     }
 
     async function requestJson(url, options = {}) {
@@ -582,12 +726,14 @@
     async function checkHealth() {
       try {
         const data = await requestJson("/health", { headers: headers() });
+        setReadyState({ serviceOnline: true, hasCookie: Boolean(data.has_cookie) });
         setStatus(
           el.healthStatus,
           data.has_cookie ? "服务正常，已检测到本机 Cookie" : "服务正常，尚未登录",
           "ok",
         );
       } catch (error) {
+        setReadyState({ serviceOnline: false, hasCookie: false, message: error.message });
         setStatus(el.healthStatus, error.message, "bad");
       }
     }
@@ -649,6 +795,10 @@
         setStatus(el.downloadStatus, "请先输入抖音链接", "bad");
         return;
       }
+      if (!state.hasCookie) {
+        setStatus(el.downloadStatus, "当前没有本地 Cookie，请先扫码登录", "bad");
+        return;
+      }
       el.parseBtn.disabled = true;
       el.downloadBtn.disabled = true;
       setStatus(el.downloadStatus, "正在解析视频和清晰度...");
@@ -664,7 +814,7 @@
       } catch (error) {
         setStatus(el.downloadStatus, error.message, "bad");
       } finally {
-        el.parseBtn.disabled = false;
+        el.parseBtn.disabled = !state.hasCookie;
       }
     }
 
@@ -829,11 +979,6 @@
       }
     }
 
-    el.saveTokenBtn.addEventListener("click", async () => {
-      state.token = el.apiToken.value.trim();
-      localStorage.setItem("douyinParseToken", state.token);
-      await checkHealth();
-    });
     el.loginBtn.addEventListener("click", createLoginSession);
     el.refreshStatusBtn.addEventListener("click", refreshLoginStatus);
     el.parseBtn.addEventListener("click", parseVideo);

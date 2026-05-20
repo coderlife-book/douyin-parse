@@ -1,5 +1,4 @@
 requests
-PySide6
 playwright
 gmssl
 fastapi
