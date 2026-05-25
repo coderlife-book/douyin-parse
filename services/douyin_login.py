@@ -169,26 +169,21 @@ class LoginSession:
                 )
                 page = context.new_page()
 
-                self._set_state("initializing", "打开抖音登录页")
-                page.goto("https://www.douyin.com", wait_until="domcontentloaded", timeout=30000)
-                content = self._safe_page_content(page)
-                if "error_code" in content or "缺少参数" in content:
-                    self._set_state("initializing", "登录页受限，切换备用入口")
-                    page.goto(
-                        "https://www.douyin.com/passport/web/auth/?aid=6383&next=https%3A%2F%2Fwww.douyin.com",
-                        wait_until="domcontentloaded",
-                        timeout=30000,
-                    )
+                self._set_state("initializing", "打开抖音创作者平台登录页")
+                page.goto("https://creator.douyin.com/", wait_until="domcontentloaded", timeout=30000)
 
-                self._switch_to_qr_login(page)
                 qr_element = self._find_qr_element(page)
                 if qr_element is None:
-                    self._set_state("failed", "未找到二维码，请确认网络可访问抖音登录页", error="qr_not_found")
+                    self._set_state("failed", "未找到二维码，请确认网络可访问抖音创作者平台", error="qr_not_found")
                     self._qr_ready.set()
                     return
 
-                img_bytes = qr_element.screenshot()
-                qr_image = "data:image/png;base64," + base64.b64encode(img_bytes).decode("ascii")
+                qr_src = qr_element.get_attribute("src") or ""
+                if qr_src.startswith("data:image"):
+                    qr_image = qr_src
+                else:
+                    img_bytes = qr_element.screenshot()
+                    qr_image = "data:image/png;base64," + base64.b64encode(img_bytes).decode("ascii")
                 self._set_state("waiting", "等待扫码登录", qr_image=qr_image)
                 self._qr_ready.set()
 
@@ -302,6 +297,7 @@ class LoginSession:
     @staticmethod
     def _find_qr_element(page):
         selectors = [
+            'img[role="img"][aria-label="二维码"]',
             "img[aria-label*='二维码']",
             "img.RhjdbXj8",
             "img[src^='data:image/png;base64']",
@@ -348,7 +344,7 @@ class LoginSession:
             return True
 
         try:
-            for selector in ("img[aria-label*='二维码']", "img[src*='qrcode']", "img[src*='qr']"):
+            for selector in ('img[role="img"][aria-label="二维码"]', "img[aria-label*='二维码']", "img[src*='qrcode']", "img[src*='qr']"):
                 if page.query_selector(selector):
                     return False
             return True
