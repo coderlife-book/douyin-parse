@@ -445,23 +445,37 @@
       font: 12px/1.4 "Menlo", "PingFang SC", sans-serif;
     }
 
-    .qr-box {
+    .login-hint {
       display: grid;
-      min-height: 250px;
+      gap: 10px;
+      min-height: 120px;
       place-items: center;
+      padding: 20px;
       border: 1px dashed rgba(27, 26, 23, 0.22);
       border-radius: 20px;
       background:
         linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.12)),
         repeating-linear-gradient(90deg, rgba(27, 26, 23, 0.03) 0 1px, transparent 1px 12px);
+      color: var(--muted);
+      font: 14px/1.7 "PingFang SC", sans-serif;
+      text-align: center;
     }
 
-    .qr-box img {
-      width: 210px;
-      height: 210px;
-      border-radius: 14px;
-      background: white;
-      box-shadow: 0 18px 42px rgba(27, 26, 23, 0.16);
+    .login-hint .icon {
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .login-hint.active {
+      border-color: rgba(38, 112, 91, 0.32);
+      background: rgba(38, 112, 91, 0.06);
+      color: var(--green);
+    }
+
+    .login-hint.fail {
+      border-color: rgba(217, 79, 48, 0.32);
+      background: rgba(217, 79, 48, 0.06);
+      color: var(--accent-dark);
     }
 
     .meta {
@@ -537,7 +551,7 @@
     <section class="hero">
       <div class="brand">
         <div class="eyebrow"><span class="dot"></span><span>127.0.0.1 本地服务</span></div>
-        <h1>扫码登录，直接下载视频。</h1>
+        <h1>登录抖音，直接下载视频。</h1>
         <p class="subtitle">这个页面只调用当前机器上的 API 服务。Cookie 保存在本机，视频解析和下载都通过本地进程完成。</p>
       </div>
 
@@ -566,14 +580,18 @@
           <div id="healthStatus" class="status">正在检查本地服务...</div>
         </section>
 
-        <section class="card stack">
-          <h2>2. 扫码登录</h2>
-          <div class="row wrap">
-            <button id="loginBtn" class="primary">生成二维码</button>
+        <section class="card stack" id="loginCard">
+          <h2>2. 登录抖音</h2>
+          <div id="loginActions" class="row wrap">
+            <button id="loginBtn" class="primary">打开登录窗口</button>
+            <button id="logoutBtn" style="display:none">退出登录</button>
             <button id="refreshStatusBtn">刷新状态</button>
           </div>
-          <div id="loginStatus" class="status">未创建扫码会话</div>
-          <div class="qr-box" id="qrBox">二维码会显示在这里</div>
+          <div id="loginStatus" class="status">未创建登录会话</div>
+          <div class="login-hint" id="loginHint">
+            <span class="icon">&#x1F5A5;</span>
+            <span>点击「打开登录窗口」后，请在弹出的浏览器中扫码登录<br>如遇二次验证，请在浏览器中手动完成</span>
+          </div>
         </section>
       </div>
     </section>
@@ -645,7 +663,8 @@
       loginBtn: document.getElementById("loginBtn"),
       refreshStatusBtn: document.getElementById("refreshStatusBtn"),
       loginStatus: document.getElementById("loginStatus"),
-      qrBox: document.getElementById("qrBox"),
+      loginHint: document.getElementById("loginHint"),
+      logoutBtn: document.getElementById("logoutBtn"),
       videoUrl: document.getElementById("videoUrl"),
       parseBtn: document.getElementById("parseBtn"),
       qualityPicker: document.getElementById("qualityPicker"),
@@ -688,6 +707,7 @@
         el.serviceValue.textContent = "离线";
         el.cookieValue.textContent = "无法检查";
         el.loginBtn.disabled = true;
+        el.logoutBtn.style.display = "none";
         el.parseBtn.disabled = true;
         el.downloadBtn.disabled = true;
         return;
@@ -702,15 +722,21 @@
         el.cookieValue.textContent = "已检测";
         el.parseBtn.disabled = false;
         el.downloadBtn.disabled = !state.parsed;
+        el.loginBtn.style.display = "none";
+        el.logoutBtn.style.display = "";
+        el.loginHint.className = "login-hint active";
+        el.loginHint.innerHTML = '<span class="icon">&#x2705;</span><span>已登录，Cookie 可用</span>';
         return;
       }
 
       el.readyPanel.classList.add("waiting");
-      el.readyTitle.textContent = "需要先扫码登录";
-      el.readyDesc.textContent = "当前没有可用的本地 Cookie，请生成二维码并用抖音扫码后再下载。";
+      el.readyTitle.textContent = "需要先登录";
+      el.readyDesc.textContent = "当前没有可用的本地 Cookie，请打开登录窗口登录后再下载。";
       el.cookieValue.textContent = "未检测";
       el.parseBtn.disabled = true;
       el.downloadBtn.disabled = true;
+      el.loginBtn.style.display = "";
+      el.logoutBtn.style.display = "none";
     }
 
     async function requestJson(url, options = {}) {
@@ -740,8 +766,9 @@
 
     async function createLoginSession() {
       el.loginBtn.disabled = true;
-      setStatus(el.loginStatus, "正在创建扫码会话...");
-      el.qrBox.textContent = "二维码加载中...";
+      setStatus(el.loginStatus, "正在启动浏览器...");
+      el.loginHint.className = "login-hint";
+      el.loginHint.innerHTML = '<span class="icon">&#x23F3;</span><span>正在打开浏览器，请稍候...</span>';
       try {
         const data = await requestJson("/auth/session", {
           method: "POST",
@@ -753,9 +780,33 @@
         startPolling();
       } catch (error) {
         setStatus(el.loginStatus, error.message, "bad");
-        el.qrBox.textContent = "二维码创建失败";
+        el.loginHint.className = "login-hint fail";
+        el.loginHint.innerHTML = `<span>启动失败：${error.message}</span>`;
       } finally {
         el.loginBtn.disabled = false;
+      }
+    }
+
+    async function doLogout() {
+      el.logoutBtn.disabled = true;
+      try {
+        await requestJson("/auth/logout", { method: "POST", headers: headers(true) });
+        state.sessionId = "";
+        state.parsed = null;
+        el.videoMeta.classList.remove("show");
+        el.qualityPicker.classList.add("disabled");
+        el.qualityOptions.innerHTML = '<button class="quality-option" type="button" disabled><span class="quality-option-main">待解析</span><span class="quality-option-sub">先解析视频</span></button>';
+        el.qualityBadge.textContent = "待解析";
+        el.qualitySummary.textContent = "解析后可选择具体清晰度和码率";
+        setStatus(el.downloadStatus, "等待输入链接");
+        await checkHealth();
+        setStatus(el.loginStatus, "已退出登录");
+        el.loginHint.className = "login-hint";
+        el.loginHint.innerHTML = '<span class="icon">&#x1F5A5;</span><span>点击「打开登录窗口」后，请在弹出的浏览器中扫码登录<br>如遇二次验证，请在浏览器中手动完成</span>';
+      } catch (error) {
+        setStatus(el.loginStatus, error.message, "bad");
+      } finally {
+        el.logoutBtn.disabled = false;
       }
     }
 
@@ -779,8 +830,16 @@
     function renderLogin(data) {
       const type = data.status === "logged_in" ? "ok" : data.status === "failed" || data.status === "expired" ? "bad" : "";
       setStatus(el.loginStatus, `${data.message}（${data.status}）`, type);
-      if (data.qr_image) {
-        el.qrBox.innerHTML = `<img src="${data.qr_image}" alt="抖音登录二维码">`;
+
+      if (data.status === "logged_in") {
+        el.loginHint.className = "login-hint active";
+        el.loginHint.innerHTML = '<span class="icon">&#x2705;</span><span>登录成功，Cookie 已保存</span>';
+      } else if (data.status === "failed" || data.status === "expired") {
+        el.loginHint.className = "login-hint fail";
+        el.loginHint.innerHTML = `<span>${data.message}</span>`;
+      } else if (data.status === "waiting" || data.status === "initializing") {
+        el.loginHint.className = "login-hint active";
+        el.loginHint.innerHTML = '<span class="icon">&#x1F4F1;</span><span>请在弹出的浏览器窗口中扫码登录<br>如遇二次验证，请在浏览器中手动完成</span>';
       }
     }
 
@@ -980,6 +1039,7 @@
     }
 
     el.loginBtn.addEventListener("click", createLoginSession);
+    el.logoutBtn.addEventListener("click", doLogout);
     el.refreshStatusBtn.addEventListener("click", refreshLoginStatus);
     el.parseBtn.addEventListener("click", parseVideo);
     el.downloadBtn.addEventListener("click", downloadVideo);

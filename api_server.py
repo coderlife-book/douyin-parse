@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from services.douyin_login import LoginManager
+from services.douyin_login import LoginManager, clear_cookie
 from services.download_service import download_video, parse_video_info
 from services.download_tasks import DownloadTaskManager
 
@@ -67,6 +67,12 @@ def get_auth_session(session_id: str) -> dict:
     if not session:
         raise HTTPException(status_code=404, detail="扫码会话不存在")
     return session.snapshot(include_qr=True)
+
+
+@app.post("/auth/logout")
+def logout() -> dict:
+    clear_cookie()
+    return {"status": "ok", "message": "已退出登录"}
 
 
 @app.post("/parse/video")

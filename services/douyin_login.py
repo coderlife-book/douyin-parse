@@ -56,13 +56,13 @@ def save_config(data: dict[str, Any]) -> None:
 
 def load_saved_cookie() -> str:
     config = load_config()
-    cookie = (config.get("cookie") or "").lstrip("\ufeff").strip()
+    cookie = (config.get("cookie") or "").lstrip("﻿").strip()
     if cookie:
         return cookie
 
     if os.path.exists(COOKIE_PATH):
         with open(COOKIE_PATH, "r", encoding="utf-8") as file:
-            legacy_cookie = file.read().lstrip("\ufeff").strip()
+            legacy_cookie = file.read().lstrip("﻿").strip()
         if legacy_cookie:
             save_cookie(legacy_cookie, save_dir=config.get("save_dir") or DEFAULT_SAVE_DIR)
             try:
@@ -81,6 +81,11 @@ def save_cookie(cookie: str, save_dir: str | None = None) -> None:
         "save_dir": save_dir or config.get("save_dir") or DEFAULT_SAVE_DIR,
     }
     save_config(data)
+
+
+def clear_cookie() -> None:
+    if os.path.exists(CONFIG_PATH):
+        save_config({"save_dir": DEFAULT_SAVE_DIR})
 
 
 @dataclass
@@ -156,7 +161,7 @@ class LoginSession:
         browser = None
         try:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
+                browser = playwright.chromium.launch(headless=False)
                 context = browser.new_context(
                     viewport={"width": 1280, "height": 720},
                     user_agent=(
@@ -169,12 +174,14 @@ class LoginSession:
                 )
                 page = context.new_page()
 
-                self._set_state("initializing", "打开抖音创作者平台登录页")
-                page.goto("https://creator.douyin.com/", wait_until="domcontentloaded", timeout=30000)
+                self._set_state("initializing", "打开抖音登录页")
+                page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=30000)
+
+                self._switch_to_qr_login(page)
 
                 qr_element = self._find_qr_element(page)
                 if qr_element is None:
-                    self._set_state("failed", "未找到二维码，请确认网络可访问抖音创作者平台", error="qr_not_found")
+                    self._set_state("failed", "未找到二维码，请确认网络可访问抖音", error="qr_not_found")
                     self._qr_ready.set()
                     return
 
@@ -286,10 +293,15 @@ class LoginSession:
     @staticmethod
     def _switch_to_qr_login(page) -> None:
         try:
+            login_btn = page.query_selector("#NPj2H93w > button")
+            if login_btn:
+                login_btn.click()
+                page.wait_for_timeout(2000)
             for text in ("扫码登录", "二维码登录", "二维码", "扫码"):
                 button = page.query_selector(f"text={text}")
                 if button:
                     button.click()
+                    page.wait_for_timeout(1000)
                     return
         except Exception:
             return
@@ -297,9 +309,10 @@ class LoginSession:
     @staticmethod
     def _find_qr_element(page):
         selectors = [
+            "#animate_qrcode_container > div.XI37I0dP > img",
+            "#animate_qrcode_container > div.qrcode-vz0gH7 > img",
             'img[role="img"][aria-label="二维码"]',
             "img[aria-label*='二维码']",
-            "img.RhjdbXj8",
             "img[src^='data:image/png;base64']",
             "img[src*='qrcode']",
             "img[src*='qr']",
