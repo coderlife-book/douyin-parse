@@ -3,9 +3,12 @@ Douyin watermark-free video parser (requests + a_bogus + X-Bogus)
 Input: share URL, Output: watermark-free video URL
 """
 
+import json
+import os
 import re
 import requests
-from urllib.parse import quote
+import time
+from urllib.parse import parse_qsl, quote, urlsplit
 
 try:
     from abogus import ABogus
@@ -16,6 +19,153 @@ try:
     from xbogus import XBogus
 except Exception:
     XBogus = None
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_QUALITY_LOG_PATH = os.path.join(BASE_DIR, "logs", "quality_debug.jsonl")
+
+
+def _quality_log_path() -> str:
+    return os.environ.get("DOUYIN_QUALITY_LOG_PATH") or DEFAULT_QUALITY_LOG_PATH
+
+
+def _summarize_url(url: str) -> dict:
+    parsed = urlsplit(url)
+    return {
+        "scheme": parsed.scheme,
+        "host": parsed.netloc,
+        "path": parsed.path,
+        "query_keys": sorted({key for key, _value in parse_qsl(parsed.query, keep_blank_values=True)}),
+        "length": len(url),
+    }
+
+
+def _sanitize_quality_log_value(value):
+    if isinstance(value, str):
+        if value.startswith(("http://", "https://")):
+            return _summarize_url(value)
+        return value
+    if isinstance(value, list):
+        return [_sanitize_quality_log_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _sanitize_quality_log_value(item) for key, item in value.items()}
+    return value
+
+
+def _write_quality_debug_log(data: dict, qualities: list[dict]) -> None:
+    aweme = data.get("aweme_detail") or {}
+    video = aweme.get("video") or {}
+    payload = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "aweme_id": aweme.get("aweme_id"),
+        "desc": aweme.get("desc"),
+        "video": {
+            "width": video.get("width"),
+            "height": video.get("height"),
+            "duration": video.get("duration"),
+            "play_addr": _sanitize_quality_log_value(video.get("play_addr") or {}),
+        },
+        "raw_bit_rate": _sanitize_quality_log_value(video.get("bit_rate") or []),
+        "extracted_qualities": _sanitize_quality_log_value(qualities),
+    }
+
+    path = _quality_log_path()
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as file:
+        file.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def _parse_video_extra(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _normalize_definition(value: str | None) -> str:
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    if re.search(r"(^|[_\-\s])(?:4k|2160p|uhd)(?=$|[_\-\s])", text):
+        return "4K"
+    if re.search(r"(^|[_\-\s])(?:2k|1440p|qhd)(?=$|[_\-\s])", text):
+        return "2K"
+
+    match = re.search(r"(^|[_\-\s])(1080p|720p|540p|480p|360p)(?=$|[_\-\s])", text)
+    if match:
+        return match.group(2)
+
+    match = re.search(r"ratio=(4k|2k|2160p|1440p|1080p|720p|540p|480p|360p)", text)
+    if match:
+        return _normalize_definition(match.group(1))
+
+    return ""
+
+
+def _definition_from_dimensions(width, height) -> str:
+    try:
+        short_side = min(int(width or 0), int(height or 0))
+    except (TypeError, ValueError):
+        return ""
+
+    if short_side >= 2160:
+        return "4K"
+    if short_side >= 1440:
+        return "2K"
+    if short_side >= 1080:
+        return "1080p"
+    if short_side >= 720:
+        return "720p"
+    if short_side >= 540:
+        return "540p"
+    if short_side >= 480:
+        return "480p"
+    if short_side >= 360:
+        return "360p"
+    return ""
+
+
+def _definition_from_bitrate(bit_rate: int) -> str:
+    if bit_rate >= 2000000:
+        return "1080p"
+    if bit_rate >= 1000000:
+        return "720p"
+    if bit_rate >= 500000:
+        return "540p"
+    return "480p"
+
+
+def _infer_quality_ratio(bit_rate_info: dict) -> str:
+    play_addr = bit_rate_info.get("play_addr") or {}
+    video_extra = _parse_video_extra(bit_rate_info.get("video_extra"))
+
+    sources = [
+        video_extra.get("definition"),
+        play_addr.get("url_key"),
+        bit_rate_info.get("gear_name"),
+    ]
+
+    quality_type = bit_rate_info.get("quality_type")
+    if isinstance(quality_type, dict):
+        sources.append(quality_type.get("name"))
+    elif isinstance(quality_type, str):
+        sources.append(quality_type)
+
+    for source in sources:
+        ratio = _normalize_definition(source)
+        if ratio:
+            return ratio
+
+    ratio = _definition_from_dimensions(play_addr.get("width"), play_addr.get("height"))
+    if ratio:
+        return ratio
+
+    return _definition_from_bitrate(bit_rate_info.get("bit_rate", 0) or 0)
 
 
 class DouyinVideoParser:
@@ -451,35 +601,9 @@ class DouyinVideoParser:
                 url_list_br = play_addr_br.get("url_list") or []
                 bit_rate = bit_rate_info.get("bit_rate", 0)
                 gear_name = bit_rate_info.get("gear_name", "")
-                
-                # Extract ratio from quality_type (handle both dict and int cases)
-                ratio = ""
-                quality_type = bit_rate_info.get("quality_type")
-                if isinstance(quality_type, dict):
-                    ratio = quality_type.get("name", "")
-                elif isinstance(quality_type, (int, str)):
-                    # If quality_type is a number or string, try to parse it
-                    quality_str = str(quality_type)
-                    ratio_match = re.search(r'(\d+p)', quality_str.lower())
-                    if ratio_match:
-                        ratio = ratio_match.group(1)
-                
-                # Parse ratio from gear_name if not found
-                if not ratio and gear_name:
-                    ratio_match = re.search(r'(\d+p)', gear_name.lower())
-                    if ratio_match:
-                        ratio = ratio_match.group(1)
-                
-                # If no ratio found, try to infer from bit_rate
-                if not ratio:
-                    if bit_rate >= 2000000:  # ~2Mbps or higher
-                        ratio = "1080p"
-                    elif bit_rate >= 1000000:  # ~1Mbps or higher
-                        ratio = "720p"
-                    elif bit_rate >= 500000:  # ~500kbps or higher
-                        ratio = "540p"
-                    else:
-                        ratio = "480p"
+                file_size = play_addr_br.get("data_size", 0) or 0
+                fps = bit_rate_info.get("FPS", 0) or bit_rate_info.get("fps", 0) or 0
+                ratio = _infer_quality_ratio(bit_rate_info)
                 
                 if url_list_br:
                     for url in url_list_br:
@@ -489,6 +613,8 @@ class DouyinVideoParser:
                             "url": nwm_url,
                             "ratio": ratio,
                             "bit_rate": bit_rate,
+                            "file_size": file_size,
+                            "fps": fps,
                             "quality_label": quality_label,
                             "gear_name": gear_name,
                         })
@@ -497,13 +623,13 @@ class DouyinVideoParser:
         if not qualities and url_list:
             for url in url_list:
                 nwm_url = url.replace("playwm", "play")
-                # Try to extract ratio from URL
-                ratio_match = re.search(r'ratio=(\d+p)', url.lower())
-                ratio = ratio_match.group(1) if ratio_match else "1080p"
+                ratio = _normalize_definition(url) or "1080p"
                 qualities.append({
                     "url": nwm_url,
                     "ratio": ratio,
                     "bit_rate": 0,
+                    "file_size": play_addr.get("data_size", 0) or 0,
+                    "fps": 0,
                     "quality_label": ratio,
                     "gear_name": "",
                 })
@@ -511,13 +637,16 @@ class DouyinVideoParser:
         # Method 3: Construct from uri with different ratios (last resort)
         if not qualities and uri:
             # Try common ratios
-            for ratio in ["1080p", "720p", "540p", "480p", "360p"]:
+            for ratio in ["4k", "1440p", "1080p", "720p", "540p", "480p", "360p"]:
                 nwm_url = f"https://aweme.snssdk.com/aweme/v1/play/?video_id={uri}&ratio={ratio}&line=0"
+                normalized_ratio = _normalize_definition(ratio) or ratio
                 qualities.append({
                     "url": nwm_url,
-                    "ratio": ratio,
+                    "ratio": normalized_ratio,
                     "bit_rate": 0,
-                    "quality_label": ratio,
+                    "file_size": 0,
+                    "fps": 0,
+                    "quality_label": normalized_ratio,
                     "gear_name": "",
                 })
         
@@ -529,12 +658,13 @@ class DouyinVideoParser:
                 seen_urls.add(q["url"])
                 unique_qualities.append(q)
         
-        # Sort by bit_rate descending, then by ratio (1080p > 720p > ...)
+        # Sort by visual resolution first, then choose the highest bitrate within the same ratio.
         def sort_key(q):
-            ratio_order = {"1080p": 5, "720p": 4, "540p": 3, "480p": 2, "360p": 1}
-            return (q["bit_rate"], ratio_order.get(q["ratio"], 0))
+            ratio_order = {"4K": 7, "2K": 6, "1080p": 5, "720p": 4, "540p": 3, "480p": 2, "360p": 1}
+            return (ratio_order.get(q["ratio"], 0), q["bit_rate"])
         
         unique_qualities.sort(key=sort_key, reverse=True)
+        _write_quality_debug_log(data, unique_qualities)
         
         return unique_qualities
 
@@ -597,8 +727,8 @@ class DouyinVideoParser:
         
         if content_type == "video":
             # Video: return nwm_url and qualities
-            nwm_url = self.extract_nwm_url(data)
             qualities = self.extract_video_qualities(data)
+            nwm_url = qualities[0]["url"] if qualities else None
             result["nwm_url"] = nwm_url
             result["qualities"] = qualities
             # If no video data found, return None
@@ -782,4 +912,3 @@ class DouyinVideoParser:
 def get_nwm_url(share_url: str) -> str | None:
     """简化调用：输入分享链接，输出无水印真实地址"""
     return DouyinVideoParser().parse_to_nwm_url(share_url)
-

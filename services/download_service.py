@@ -54,6 +54,8 @@ def serialize_video_info(info: dict) -> dict:
         payload = {
             "ratio": item.get("ratio"),
             "bit_rate": item.get("bit_rate", 0),
+            "file_size": item.get("file_size", 0),
+            "fps": item.get("fps", 0),
             "quality_label": item.get("quality_label") or item.get("ratio") or "默认清晰度",
             "gear_name": item.get("gear_name", ""),
         }
@@ -63,7 +65,7 @@ def serialize_video_info(info: dict) -> dict:
 
     qualities = sorted(
         qualities_by_ratio.values(),
-        key=lambda item: (item["bit_rate"], _ratio_rank(item["ratio"])),
+        key=lambda item: (_ratio_rank(item["ratio"]), item["bit_rate"]),
         reverse=True,
     )
 
@@ -82,6 +84,11 @@ def serialize_video_info(info: dict) -> dict:
 def _ratio_rank(ratio: str | None) -> int:
     if not ratio:
         return 0
+    normalized = ratio.strip().lower()
+    if normalized in ("4k", "2160p"):
+        return 2160
+    if normalized in ("2k", "1440p"):
+        return 1440
     match = re.search(r"(\d+)p", ratio)
     if not match:
         return 0
@@ -177,3 +184,63 @@ def _download_file(
 
     if progress_cb:
         progress_cb(100, downloaded, total)
+
+
+def open_video_stream(
+    share_url: str,
+    *,
+    cookie: str,
+    quality: str | None = None,
+    range_header: str | None = None,
+):
+    """现场解析并打开视频流，供预览接口流式转发。
+
+    返回 (生成器, HTTP 状态码, 透传响应头)。视频直链不出本函数。
+    """
+    parser = DouyinVideoParser()
+    parser.set_cookie(cookie)
+    info = parser.parse_video(share_url)
+    if not info:
+        raise ValueError("解析失败，请确认链接有效且 Cookie 未过期")
+    if info.get("content_type") != "video":
+        raise ValueError("当前接口只支持预览视频，不支持图集")
+
+    download_url = choose_download_url(info, quality=quality)
+    if not download_url:
+        raise ValueError("解析成功但未找到可预览的视频地址")
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/90.0.4430.212 Safari/537.36"
+        ),
+        "Referer": "https://www.douyin.com/",
+        "Origin": "https://www.douyin.com",
+        "Accept": "*/*",
+        "Accept-Encoding": "identity",
+        "Range": range_header or "bytes=0-",
+    }
+    response = requests.get(download_url, headers=headers, stream=True, timeout=30)
+    if response.status_code not in (200, 206):
+        response.close()
+        raise ValueError(f"视频预览失败，HTTP 状态码：{response.status_code}")
+
+    passthrough_headers = {}
+    content_length = response.headers.get("content-length")
+    if content_length:
+        passthrough_headers["content-length"] = content_length
+    content_range = response.headers.get("content-range")
+    if content_range:
+        passthrough_headers["content-range"] = content_range
+    passthrough_headers["accept-ranges"] = response.headers.get("accept-ranges") or "bytes"
+
+    def stream():
+        try:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        finally:
+            response.close()
+
+    return stream(), response.status_code, passthrough_headers

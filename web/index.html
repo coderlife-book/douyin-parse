@@ -353,8 +353,7 @@
     .quality-title {
       color: var(--muted);
       font: 700 12px/1 "PingFang SC", sans-serif;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
     .quality-badge {
@@ -407,9 +406,7 @@
     }
 
     .quality-summary {
-      min-height: 18px;
-      color: var(--muted);
-      font: 13px/1.4 "PingFang SC", sans-serif;
+      display: none;
     }
 
     .download-progress {
@@ -501,6 +498,43 @@
       background: #e6ded2;
     }
 
+    .preview-video {
+      grid-column: 1 / -1;
+      width: 100%;
+      max-height: 380px;
+      margin-bottom: 4px;
+      border-radius: 14px;
+      background: #000;
+      display: none;
+    }
+
+    .preview-video.show {
+      display: block;
+    }
+
+    .quality-option-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 4px;
+    }
+
+    .quality-option-metric {
+      display: inline-flex;
+      gap: 5px;
+      align-items: baseline;
+    }
+
+    .quality-option-metric-label {
+      color: rgba(112, 104, 92, 0.72);
+      font-size: 12px;
+      letter-spacing: 0.03em;
+    }
+
+    .quality-option-metric-value {
+      color: var(--muted);
+    }
+
     .desc {
       margin: 0 0 10px;
       font: 700 16px/1.5 "PingFang SC", sans-serif;
@@ -578,13 +612,15 @@
             </div>
           </div>
           <div id="healthStatus" class="status">正在检查本地服务...</div>
+          <div id="logoutRow" class="row" style="display:none; justify-content:flex-end;">
+            <button id="logoutBtn">退出登录</button>
+          </div>
         </section>
 
         <section class="card stack" id="loginCard">
           <h2>2. 登录抖音</h2>
           <div id="loginActions" class="row wrap">
             <button id="loginBtn" class="primary">打开登录窗口</button>
-            <button id="logoutBtn" style="display:none">退出登录</button>
             <button id="refreshStatusBtn">刷新状态</button>
           </div>
           <div id="loginStatus" class="status">未创建登录会话</div>
@@ -598,7 +634,7 @@
 
     <section class="panel stack" style="margin-top: 22px;">
       <section class="card stack">
-        <h2>3. 输入链接并选择清晰度</h2>
+        <h2 id="downloadHeading">3. 输入链接并选择清晰度</h2>
         <div class="row">
           <input id="videoUrl" placeholder="粘贴抖音分享链接，例如 https://v.douyin.com/..." autocomplete="off">
           <button id="parseBtn" disabled>解析清晰度</button>
@@ -606,7 +642,7 @@
         <div class="quality-row">
           <div id="qualityPicker" class="quality-picker disabled">
             <div class="quality-head">
-              <span class="quality-title">Quality</span>
+              <span class="quality-title">清晰度</span>
               <span id="qualityBadge" class="quality-badge">待解析</span>
             </div>
             <div id="qualityOptions" class="quality-options">
@@ -615,7 +651,7 @@
                 <span class="quality-option-sub">先解析视频</span>
               </button>
             </div>
-            <div id="qualitySummary" class="quality-summary">解析后可选择具体清晰度和码率</div>
+            <div id="qualitySummary" class="quality-summary"></div>
           </div>
           <button id="downloadBtn" class="primary" disabled>下载视频</button>
         </div>
@@ -630,6 +666,7 @@
           </div>
         </div>
         <div id="videoMeta" class="meta">
+          <video id="previewVideo" class="preview-video" controls preload="metadata"></video>
           <img id="cover" class="cover" alt="视频封面">
           <div>
             <p id="desc" class="desc"></p>
@@ -660,6 +697,9 @@
       serviceValue: document.getElementById("serviceValue"),
       cookieValue: document.getElementById("cookieValue"),
       healthStatus: document.getElementById("healthStatus"),
+      loginCard: document.getElementById("loginCard"),
+      logoutRow: document.getElementById("logoutRow"),
+      downloadHeading: document.getElementById("downloadHeading"),
       loginBtn: document.getElementById("loginBtn"),
       refreshStatusBtn: document.getElementById("refreshStatusBtn"),
       loginStatus: document.getElementById("loginStatus"),
@@ -678,6 +718,7 @@
       progressText: document.getElementById("progressText"),
       progressBytes: document.getElementById("progressBytes"),
       videoMeta: document.getElementById("videoMeta"),
+      previewVideo: document.getElementById("previewVideo"),
       cover: document.getElementById("cover"),
       desc: document.getElementById("desc"),
       author: document.getElementById("author"),
@@ -707,9 +748,11 @@
         el.serviceValue.textContent = "离线";
         el.cookieValue.textContent = "无法检查";
         el.loginBtn.disabled = true;
-        el.logoutBtn.style.display = "none";
         el.parseBtn.disabled = true;
         el.downloadBtn.disabled = true;
+        el.loginCard.style.display = "";
+        el.logoutRow.style.display = "none";
+        el.downloadHeading.textContent = "3. 输入链接并选择清晰度";
         return;
       }
 
@@ -722,10 +765,11 @@
         el.cookieValue.textContent = "已检测";
         el.parseBtn.disabled = false;
         el.downloadBtn.disabled = !state.parsed;
-        el.loginBtn.style.display = "none";
-        el.logoutBtn.style.display = "";
+        el.loginCard.style.display = "none";
+        el.logoutRow.style.display = "";
         el.loginHint.className = "login-hint active";
         el.loginHint.innerHTML = '<span class="icon">&#x2705;</span><span>已登录，Cookie 可用</span>';
+        el.downloadHeading.textContent = "2. 输入链接并选择清晰度";
         return;
       }
 
@@ -735,8 +779,9 @@
       el.cookieValue.textContent = "未检测";
       el.parseBtn.disabled = true;
       el.downloadBtn.disabled = true;
-      el.loginBtn.style.display = "";
-      el.logoutBtn.style.display = "none";
+      el.loginCard.style.display = "";
+      el.logoutRow.style.display = "none";
+      el.downloadHeading.textContent = "3. 输入链接并选择清晰度";
     }
 
     async function requestJson(url, options = {}) {
@@ -794,10 +839,13 @@
         state.sessionId = "";
         state.parsed = null;
         el.videoMeta.classList.remove("show");
+        el.previewVideo.classList.remove("show");
+        el.previewVideo.removeAttribute("src");
+        el.previewVideo.load();
         el.qualityPicker.classList.add("disabled");
         el.qualityOptions.innerHTML = '<button class="quality-option" type="button" disabled><span class="quality-option-main">待解析</span><span class="quality-option-sub">先解析视频</span></button>';
         el.qualityBadge.textContent = "待解析";
-        el.qualitySummary.textContent = "解析后可选择具体清晰度和码率";
+        el.qualitySummary.textContent = "";
         setStatus(el.downloadStatus, "等待输入链接");
         await checkHealth();
         setStatus(el.loginStatus, "已退出登录");
@@ -897,24 +945,36 @@
       el.desc.textContent = data.desc || "无标题视频";
       el.author.textContent = data.author_nickname ? `作者：${data.author_nickname}` : "作者：未知";
       el.aweme.textContent = data.aweme_id ? `视频 ID：${data.aweme_id}` : "";
+      previewQuality(state.selectedQuality);
     }
 
     function addQualityOption(quality, active) {
       const button = document.createElement("button");
       const ratio = quality.ratio || "";
       const bitrate = quality.bit_rate ? `${Math.round(quality.bit_rate / 1000)} Kbps` : "码率未知";
+      const fileSize = formatFileSize(quality.file_size || 0);
       button.type = "button";
       button.className = `quality-option${active ? " active" : ""}`;
       button.dataset.quality = ratio;
       button.innerHTML = `
-        <span class="quality-option-main">${quality.quality_label || ratio || "默认清晰度"}</span>
-        <span class="quality-option-sub">${bitrate}</span>
+        <span class="quality-option-main">${formatQualityTitle(ratio)}</span>
+        <span class="quality-option-sub quality-option-meta">
+          <span class="quality-option-metric">
+            <span class="quality-option-metric-label">码率</span>
+            <span class="quality-option-metric-value">${bitrate}</span>
+          </span>
+          <span class="quality-option-metric">
+            <span class="quality-option-metric-label">大小</span>
+            <span class="quality-option-metric-value">${fileSize || "未知"}</span>
+          </span>
+        </span>
       `;
       button.addEventListener("click", () => {
         state.selectedQuality = ratio;
         el.qualityOptions.querySelectorAll(".quality-option").forEach(item => item.classList.remove("active"));
         button.classList.add("active");
         updateQualitySummary();
+        previewQuality(ratio);
       });
       el.qualityOptions.appendChild(button);
     }
@@ -924,14 +984,24 @@
       const current = qualities.find(quality => (quality.ratio || "") === state.selectedQuality) || qualities[0];
       if (!current) {
         el.qualityBadge.textContent = "默认";
-        el.qualitySummary.textContent = "使用解析接口返回的默认下载地址";
+        el.qualitySummary.textContent = "";
         return;
       }
 
       el.qualityBadge.textContent = current.ratio || "默认";
-      const bitrate = current.bit_rate ? `${Math.round(current.bit_rate / 1000)} Kbps` : "码率未知";
-      const gear = current.gear_name ? ` · ${current.gear_name}` : "";
-      el.qualitySummary.textContent = `${bitrate}${gear}`;
+      el.qualitySummary.textContent = "";
+    }
+
+    function previewQuality(ratio) {
+      const url = el.videoUrl.value.trim();
+      if (!url) return;
+      const params = new URLSearchParams({ url });
+      if (ratio) params.set("quality", ratio);
+      if (state.sessionId) params.set("session_id", state.sessionId);
+      el.previewVideo.poster = (state.parsed && state.parsed.cover_url) || "";
+      el.previewVideo.src = `/preview/video?${params.toString()}`;
+      el.previewVideo.classList.add("show");
+      el.previewVideo.load();
     }
 
     function setDownloadLoading(loading) {
@@ -966,6 +1036,23 @@
       if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
       if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
       return `${value} B`;
+    }
+
+    function formatFileSize(value) {
+      if (!value) return "";
+      return formatByte(value);
+    }
+
+    function formatQualityTitle(ratio) {
+      const normalized = (ratio || "").toLowerCase();
+      if (normalized === "4k") return "超清 4K";
+      if (normalized === "2k") return "超清 2K";
+      if (normalized === "1080p") return "高清 1080P";
+      if (normalized === "720p") return "高清 720P";
+      if (normalized === "540p") return "标清 540P";
+      if (normalized === "480p") return "标清 480P";
+      if (normalized === "360p") return "流畅 360P";
+      return ratio || "默认清晰度";
     }
 
     async function pollDownloadTask(taskId) {

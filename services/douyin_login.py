@@ -12,6 +12,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 COOKIE_PATH = os.path.join(BASE_DIR, "douyin_cookie.txt")
 DEFAULT_SAVE_DIR = os.path.join(BASE_DIR, "downloads")
+LOGIN_PAGE_URL = "https://www.douyin.com/user/self"
 
 
 def cookies_to_header(cookies: list[dict[str, Any]]) -> str:
@@ -175,7 +176,7 @@ class LoginSession:
                 page = context.new_page()
 
                 self._set_state("initializing", "打开抖音登录页")
-                page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=30000)
+                page.goto(LOGIN_PAGE_URL, wait_until="domcontentloaded", timeout=30000)
 
                 self._switch_to_qr_login(page)
 

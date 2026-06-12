@@ -8,6 +8,9 @@ from services import douyin_login
 
 
 class ConfigStorageTests(unittest.TestCase):
+    def test_login_page_uses_self_page_to_avoid_home_feed(self):
+        self.assertEqual(douyin_login.LOGIN_PAGE_URL, "https://www.douyin.com/user/self")
+
     def test_save_cookie_writes_only_config_json(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.json"

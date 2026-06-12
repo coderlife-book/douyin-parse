@@ -1,12 +1,12 @@
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from services.douyin_login import LoginManager, clear_cookie
-from services.download_service import download_video, parse_video_info
+from services.download_service import download_video, parse_video_info, open_video_stream
 from services.download_tasks import DownloadTaskManager
 
 
@@ -85,6 +85,35 @@ def parse_video_api(payload: ParseVideoRequest) -> dict:
         return parse_video_info(payload.url, cookie=cookie)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/preview/video")
+def preview_video(
+    request: Request,
+    url: str,
+    quality: str | None = None,
+    session_id: str | None = None,
+):
+    cookie = login_manager.get_cookie(session_id)
+    if not cookie:
+        raise HTTPException(status_code=401, detail="请先调用 /auth/session 扫码登录")
+
+    try:
+        stream, status_code, resp_headers = open_video_stream(
+            url,
+            cookie=cookie,
+            quality=quality,
+            range_header=request.headers.get("range"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return StreamingResponse(
+        stream,
+        status_code=status_code,
+        media_type="video/mp4",
+        headers=resp_headers,
+    )
 
 
 @app.post("/download/video")
