@@ -2,6 +2,12 @@
 
 基于 FastAPI 的本地 Web 服务，启动后通过浏览器访问 `web/index.html`，完成抖音扫码登录、视频解析、清晰度选择和下载任务。
 
+## 页面预览
+
+![页面预览一](docs/web-1.jpg)
+
+![页面预览二](docs/web-2.jpg)
+
 ## 功能
 
 - 本地 Web 页面：访问 `http://127.0.0.1:8787/` 使用。
@@ -113,6 +119,7 @@ curl -o douyin.mp4 http://127.0.0.1:8787/download/video/task/<task_id>/file
 douyin-parse/
 ├── api_server.py                 # FastAPI 服务入口，托管 Web 页面和 API
 ├── web/index.html                # 本地 Web 页面
+├── docs/                         # README 截图等说明资源
 ├── services/
 │   ├── douyin_login.py           # 扫码登录、Cookie 读写
 │   ├── download_service.py       # 视频解析和下载
