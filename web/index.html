@@ -552,6 +552,70 @@
       text-align: center;
     }
 
+    /* === 最近任务列表 === */
+    .task-list {
+      display: grid;
+      gap: 10px;
+    }
+    .task-empty {
+      color: var(--muted);
+      font-size: 14px;
+      padding: 8px 0;
+    }
+    .task-item {
+      display: grid;
+      grid-template-columns: 64px 1fr auto;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-strong);
+      align-items: start;
+    }
+    .task-cover {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: rgba(27, 26, 23, 0.06);
+    }
+    .task-body {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .task-desc {
+      font-size: 14px;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .task-actions button {
+      height: 36px;
+      padding: 0 14px;
+      font-size: 13px;
+    }
+    /* 行内进度条默认隐藏，running 时显示 */
+    .task-item .download-progress {
+      display: none;
+      margin-top: 2px;
+    }
+    .task-item--running .download-progress {
+      display: grid;
+    }
+    .status.running {
+      color: var(--accent-dark);
+    }
+    .status.expired {
+      color: var(--muted);
+    }
+
     @media (max-width: 900px) {
       .shell {
         padding: 20px 0;
@@ -677,6 +741,15 @@
       </section>
     </section>
 
+    <section class="panel stack" style="margin-top: 22px;">
+      <section class="card stack">
+        <h2>最近任务</h2>
+        <div id="taskList" class="task-list">
+          <div class="task-empty">还没有下载记录</div>
+        </div>
+      </section>
+    </section>
+
     <div class="footer">服务地址：<code>http://127.0.0.1:8787</code></div>
   </main>
 
@@ -688,6 +761,8 @@
       hasCookie: false,
       parsed: null,
       selectedQuality: "",
+      tasks: [],
+      bgPollers: {},
     };
 
     const el = {
@@ -723,6 +798,7 @@
       desc: document.getElementById("desc"),
       author: document.getElementById("author"),
       aweme: document.getElementById("aweme"),
+      taskList: document.getElementById("taskList"),
     };
 
     function headers(json = false) {
@@ -1055,11 +1131,269 @@
       return ratio || "默认清晰度";
     }
 
-    async function pollDownloadTask(taskId) {
+    /* === 最近任务列表：持久化 / 渲染 / 后台轮询 === */
+    const TASKS_KEY = "douyin_download_tasks";
+    const TASKS_MAX = 20;
+
+    function loadTasks() {
+      try {
+        const raw = localStorage.getItem(TASKS_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        state.tasks = Array.isArray(list) ? list : [];
+      } catch (err) {
+        console.warn("加载任务列表失败", err);
+        state.tasks = [];
+      }
+      return state.tasks;
+    }
+
+    function saveTasks() {
+      try {
+        localStorage.setItem(TASKS_KEY, JSON.stringify(state.tasks));
+      } catch (err) {
+        console.warn("保存任务列表失败", err);
+      }
+    }
+
+    function findTask(id) {
+      return state.tasks.find(item => item.id === id);
+    }
+
+    // 状态变更专用：合并字段 + 写 localStorage + 单行刷新
+    function upsertTask(partial) {
+      const task = findTask(partial.id);
+      if (!task) return null;
+      Object.assign(task, partial, { updatedAt: Date.now() });
+      saveTasks();
+      renderTaskRow(task.id);
+      return task;
+    }
+
+    // 仅更新内存进度 + 行内 DOM，不写 localStorage（限频）
+    function syncTaskProgress(remote) {
+      const task = findTask(remote.task_id);
+      if (!task) return;
+      task.progress = remote.progress || 0;
+      task.downloaded = remote.downloaded || 0;
+      task.total = remote.total || 0;
+      task.message = remote.message || "正在下载视频";
+      task.updatedAt = Date.now();
+      const row = document.getElementById(`task-row-${task.id}`);
+      if (row) {
+        updateRowProgress(row, task);
+        setStatus(row.querySelector(".status"), task.message, "running");
+      }
+    }
+
+    function addTask(meta) {
+      const now = Date.now();
+      const task = {
+        id: meta.id,
+        status: "running",
+        url: meta.url || "",
+        quality: meta.quality || "",
+        qualityLabel: meta.qualityLabel || "",
+        desc: meta.desc || "",
+        coverUrl: meta.coverUrl || "",
+        author: meta.author || "",
+        awemeId: meta.awemeId || "",
+        message: "",
+        filename: null,
+        progress: 0,
+        downloaded: 0,
+        total: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.tasks.unshift(task);
+      if (state.tasks.length > TASKS_MAX) state.tasks.length = TASKS_MAX;
+      saveTasks();
+      renderTaskList();
+      return task;
+    }
+
+    function removeTask(id) {
+      stopBgPoll(id);
+      state.tasks = state.tasks.filter(item => item.id !== id);
+      saveTasks();
+      const row = document.getElementById(`task-row-${id}`);
+      if (row) row.remove();
+      if (!state.tasks.length) renderTaskList();
+    }
+
+    function renderTaskList() {
+      el.taskList.innerHTML = "";
+      if (!state.tasks.length) {
+        const empty = document.createElement("div");
+        empty.className = "task-empty";
+        empty.textContent = "还没有下载记录";
+        el.taskList.appendChild(empty);
+        return;
+      }
+      state.tasks.forEach(item => renderTaskRow(item.id));
+    }
+
+    function updateRowProgress(rowEl, task) {
+      const progress = Math.max(0, Math.min(100, task.progress || 0));
+      rowEl.querySelector(".progress-fill").style.width = `${progress}%`;
+      rowEl.querySelector(".progress-text").textContent = `${progress}%`;
+      rowEl.querySelector(".progress-bytes").textContent = formatBytes(task.downloaded || 0, task.total || 0);
+    }
+
+    function renderTaskRow(id) {
+      const task = findTask(id);
+      if (!task) return null;
+      let row = document.getElementById(`task-row-${id}`);
+      if (!row) {
+        row = document.createElement("div");
+        row.id = `task-row-${id}`;
+        row.className = "task-item";
+        row.innerHTML = `
+          <img class="task-cover" alt="">
+          <div class="task-body">
+            <div class="task-desc"></div>
+            <div class="task-sub small"></div>
+            <div class="download-progress">
+              <div class="progress-track"><div class="progress-fill"></div></div>
+              <div class="progress-meta">
+                <span class="progress-text">0%</span>
+                <span class="progress-bytes"></span>
+              </div>
+            </div>
+            <div class="status"></div>
+          </div>
+          <div class="task-actions">
+            <button class="task-save primary" type="button" hidden>保存</button>
+            <button class="task-del" type="button">删除</button>
+          </div>
+        `;
+        row.querySelector(".task-save").addEventListener("click", () => saveTaskFromList(id));
+        row.querySelector(".task-del").addEventListener("click", () => removeTask(id));
+        row.querySelector(".task-cover").addEventListener("error", function () { this.style.visibility = "hidden"; });
+        el.taskList.appendChild(row);
+      }
+
+      row.className = `task-item task-item--${task.status}`;
+      const cover = row.querySelector(".task-cover");
+      if (task.coverUrl) {
+        cover.style.visibility = "visible";
+        if (cover.dataset.src !== task.coverUrl) {
+          cover.src = task.coverUrl;
+          cover.dataset.src = task.coverUrl;
+        }
+      } else {
+        cover.style.visibility = "hidden";
+      }
+      row.querySelector(".task-desc").textContent = task.desc || task.url || "未命名视频";
+      const sub = [task.author, task.qualityLabel].filter(Boolean).join(" · ");
+      row.querySelector(".task-sub").textContent = sub || (task.awemeId ? `ID：${task.awemeId}` : "");
+
+      const saveBtn = row.querySelector(".task-save");
+      const msgNode = row.querySelector(".status");
+
+      switch (task.status) {
+        case "running":
+          updateRowProgress(row, task);
+          setStatus(msgNode, task.message || "正在下载视频", "running");
+          saveBtn.hidden = true;
+          break;
+        case "saving":
+          saveBtn.hidden = false;
+          saveBtn.disabled = true;
+          saveBtn.textContent = "保存中";
+          setStatus(msgNode, "正在保存文件...", "");
+          break;
+        case "done":
+          saveBtn.hidden = false;
+          saveBtn.disabled = false;
+          saveBtn.textContent = "保存";
+          setStatus(msgNode, task.message || "下载完成", /失效|过期/.test(task.message || "") ? "bad" : "ok");
+          break;
+        case "failed":
+          saveBtn.hidden = true;
+          setStatus(msgNode, task.message || "下载失败", "bad");
+          break;
+        case "expired":
+          saveBtn.hidden = true;
+          setStatus(msgNode, task.message || "任务已过期", "expired");
+          break;
+      }
+      return row;
+    }
+
+    // 后台非阻塞轮询：仅 restoreTasks 对 running 任务启动，与 downloadVideo 的阻塞轮询互斥
+    function startBgPoll(id) {
+      if (state.bgPollers[id]) return;
+      const task = findTask(id);
+      if (!task || task.status !== "running") return;
+      state.bgPollers[id] = setTimeout(() => pollOnce(id), 500);
+    }
+
+    function stopBgPoll(id) {
+      if (state.bgPollers[id]) {
+        clearTimeout(state.bgPollers[id]);
+        delete state.bgPollers[id];
+      }
+    }
+
+    async function pollOnce(id) {
+      try {
+        const remote = await requestJson(`/download/video/task/${id}`, { headers: headers() });
+        const task = findTask(id);
+        if (!task) { stopBgPoll(id); return; }
+        if (remote.status === "done") {
+          upsertTask({ id, status: "done", progress: 100, downloaded: remote.downloaded || 0, total: remote.total || 0, message: "下载完成，可点击保存" });
+          stopBgPoll(id);
+          return;
+        }
+        if (remote.status === "failed") {
+          upsertTask({ id, status: "failed", message: remote.message || remote.error || "下载失败" });
+          stopBgPoll(id);
+          return;
+        }
+        syncTaskProgress(remote);
+        state.bgPollers[id] = setTimeout(() => pollOnce(id), 500);
+      } catch (err) {
+        const task = findTask(id);
+        if (!task) { stopBgPoll(id); return; }
+        if ((err.message || "").includes("下载任务不存在")) {
+          upsertTask({ id, status: "expired", message: "任务已过期，服务端可能已重启" });
+          stopBgPoll(id);
+        } else {
+          task.message = `正在重试：${err.message}`;
+          renderTaskRow(id);
+          state.bgPollers[id] = setTimeout(() => pollOnce(id), 2000);
+        }
+      }
+    }
+
+    function restoreTasks() {
+      loadTasks();
+      renderTaskList();
+      state.tasks.forEach(item => {
+        if (item.status === "running") startBgPoll(item.id);
+      });
+    }
+
+    async function saveTaskFromList(id) {
+      const task = findTask(id);
+      if (!task) return;
+      task.status = "saving";
+      renderTaskRow(id);
+      try {
+        const filename = await saveTaskFile(id);
+        upsertTask({ id, status: "done", filename, message: `已保存：${filename}` });
+      } catch (err) {
+        upsertTask({ id, status: "done", message: "文件已失效，请重新下载" });
+      }
+    }
+
+    async function pollDownloadTask(taskId, onProgress) {
       for (;;) {
         const task = await requestJson(`/download/video/task/${taskId}`, { headers: headers() });
         updateProgress(task);
         setStatus(el.downloadStatus, task.message || "正在下载视频");
+        if (onProgress) onProgress(task);
 
         if (task.status === "done") {
           return task;
@@ -1104,6 +1438,7 @@
       setDownloadLoading(true);
       hideProgress();
       setStatus(el.downloadStatus, "正在创建下载任务...");
+      let createdTaskId = null;
       try {
         const task = await requestJson("/download/video/task", {
           method: "POST",
@@ -1114,11 +1449,35 @@
             quality: state.selectedQuality || null,
           }),
         });
+        createdTaskId = task.task_id;
+        const parsed = state.parsed || {};
+        addTask({
+          id: task.task_id,
+          url,
+          quality: state.selectedQuality || "",
+          qualityLabel: formatQualityTitle(state.selectedQuality),
+          desc: parsed.desc || "",
+          coverUrl: parsed.cover_url || "",
+          author: parsed.author_nickname || "",
+          awemeId: parsed.aweme_id || "",
+        });
         updateProgress(task);
-        const doneTask = await pollDownloadTask(task.task_id);
+        const doneTask = await pollDownloadTask(task.task_id, syncTaskProgress);
         const filename = await saveTaskFile(doneTask.task_id);
+        upsertTask({
+          id: task.task_id,
+          status: "done",
+          progress: 100,
+          downloaded: doneTask.downloaded || 0,
+          total: doneTask.total || 0,
+          message: `已保存：${filename}`,
+          filename,
+        });
         setStatus(el.downloadStatus, `下载完成：${filename}`, "ok");
       } catch (error) {
+        if (createdTaskId) {
+          upsertTask({ id: createdTaskId, status: "failed", message: error.message });
+        }
         setStatus(el.downloadStatus, error.message, "bad");
       } finally {
         setDownloadLoading(false);
@@ -1135,6 +1494,7 @@
     });
 
     checkHealth();
+    restoreTasks();
   </script>
 </body>
 </html>
