@@ -8,6 +8,7 @@ from douyin_video_parser import DouyinVideoParser
 from services.douyin_login import has_login_cookies
 from services.download_service import (
     choose_download_url,
+    download_video,
     open_video_stream,
     progress_percent,
     serialize_video_info,
@@ -31,6 +32,38 @@ class LoginCookieTests(unittest.TestCase):
 
 
 class DownloadHelperTests(unittest.TestCase):
+    def test_download_result_preserves_author_for_transcription_history(self):
+        class FakeParser:
+            def set_cookie(self, cookie):
+                self.cookie = cookie
+
+            def parse_video(self, share_url):
+                return {
+                    "aweme_id": "7420000000000000000",
+                    "desc": "测试视频",
+                    "author_nickname": "测试作者",
+                    "content_type": "video",
+                    "qualities": [
+                        {
+                            "ratio": "720p",
+                            "bit_rate": 1000000,
+                            "url": "https://example.com/video.mp4",
+                        }
+                    ],
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "services.download_service.DouyinVideoParser",
+            FakeParser,
+        ), patch("services.download_service._download_file"):
+            result = download_video(
+                "https://v.douyin.com/demo/",
+                cookie="sessionid=abc",
+                save_dir=temp_dir,
+            )
+
+        self.assertEqual(result.author_nickname, "测试作者")
+
     def test_choose_download_url_prefers_requested_quality(self):
         info = {
             "qualities": [

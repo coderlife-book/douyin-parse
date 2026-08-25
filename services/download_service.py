@@ -45,6 +45,7 @@ class DownloadResult:
     content_type: str
     aweme_id: str | None
     desc: str | None
+    author_nickname: str | None
 
 
 def serialize_video_info(info: dict) -> dict:
@@ -146,6 +147,7 @@ def download_video(
         content_type="video/mp4",
         aweme_id=info.get("aweme_id"),
         desc=desc,
+        author_nickname=info.get("author_nickname"),
     )
 
 
