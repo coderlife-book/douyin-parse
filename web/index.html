@@ -1784,6 +1784,18 @@
       el.transcriptionTime.textContent = task.duration ? `${processed} / ${duration} · ${task.segment_count || 0} 段` : (task.message || "准备识别");
     }
 
+    function resetTranscriptResult(message, metadata = "等待字幕任务完成") {
+      state.activeTranscript = null;
+      el.transcriptResult.hidden = false;
+      el.transcriptTitle.textContent = "识别结果";
+      el.transcriptMeta.textContent = metadata;
+      el.transcriptText.textContent = message;
+      el.transcriptSegments.innerHTML = "";
+      el.copyTranscriptBtn.disabled = true;
+      el.downloadTranscriptBtn.href = "#";
+      el.downloadTranscriptBtn.setAttribute("aria-disabled", "true");
+    }
+
     function renderTranscript(task) {
       state.activeTranscript = task;
       el.transcriptResult.hidden = false;
@@ -1846,8 +1858,12 @@
         upsertTranscriptionTask(task);
         updateTranscriptionProgress(task);
         renderTranscriptionTasks();
-        if (task.status === "done") renderTranscript(task);
-        else setStatus(el.transcriptionStatus, task.message || "正在处理", ACTIVE_TRANSCRIPTION_STATUSES.has(task.status) ? "running" : "bad");
+        if (task.status === "done") {
+          renderTranscript(task);
+        } else {
+          resetTranscriptResult(task.message || "该任务尚未生成文案", "当前任务未完成");
+          setStatus(el.transcriptionStatus, task.message || "正在处理", ACTIVE_TRANSCRIPTION_STATUSES.has(task.status) ? "running" : "bad");
+        }
       } catch (error) {
         setStatus(el.transcriptionStatus, error.message, "bad");
       }
@@ -1892,14 +1908,7 @@
       el.transcribeBtn.disabled = true;
       el.transcribeBtn.classList.add("loading");
       el.transcribeBtn.textContent = "识别中";
-      el.transcriptResult.hidden = false;
-      el.transcriptTitle.textContent = "识别结果";
-      el.transcriptMeta.textContent = "任务处理中";
-      el.transcriptText.textContent = "正在等待模型返回真实语音分段...";
-      el.transcriptSegments.innerHTML = "";
-      el.copyTranscriptBtn.disabled = true;
-      el.downloadTranscriptBtn.href = "#";
-      el.downloadTranscriptBtn.setAttribute("aria-disabled", "true");
+      resetTranscriptResult("正在等待模型返回真实语音分段...", "任务处理中");
       setStatus(el.transcriptionStatus, "正在创建字幕任务...");
       try {
         const task = await requestJson("/transcription/tasks", {

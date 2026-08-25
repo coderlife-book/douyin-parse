@@ -62,6 +62,22 @@ class WhisperModelProvider:
 DEFAULT_MODEL_PROVIDER = WhisperModelProvider(model_path())
 
 
+def _join_segment_texts(segments: list[TranscriptSegment]) -> str:
+    text = ""
+    for segment in segments:
+        needs_space = (
+            text
+            and text[-1].isascii()
+            and text[-1].isalnum()
+            and segment.text[0].isascii()
+            and segment.text[0].isalnum()
+        )
+        if needs_space:
+            text += " "
+        text += segment.text
+    return text
+
+
 def transcribe_media(
     path: str | Path,
     *,
@@ -100,5 +116,5 @@ def transcribe_media(
         duration=duration,
         language=str(info.language or ""),
         segments=segments,
-        text="".join(item.text for item in segments),
+        text=_join_segment_texts(segments),
     )

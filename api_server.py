@@ -26,6 +26,11 @@ app.add_middleware(
 )
 
 
+@app.on_event("shutdown")
+def shutdown_transcription_tasks() -> None:
+    transcription_task_manager.close(wait=False)
+
+
 class AuthSessionRequest(BaseModel):
     qr_timeout: int = Field(default=30, ge=1, le=60)
 

@@ -116,7 +116,8 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
 
     def test_restart_marks_unfinished_manifest_interrupted(self):
         task_dir = self.root / "task-running"
-        task_dir.mkdir(parents=True)
+        (task_dir / "temp").mkdir(parents=True)
+        (task_dir / "temp" / "source.mp4").write_bytes(b"private-video")
         (task_dir / "manifest.json").write_text(
             json.dumps(
                 {
@@ -139,6 +140,7 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         self.assertIsNotNone(restored)
         self.assertEqual(restored.status, "interrupted")
         self.assertEqual(restored.message, "上次运行被中断，请重新识别")
+        self.assertFalse((task_dir / "temp").exists())
 
     def test_failed_transcription_persists_error_and_removes_temporary_media(self):
         def fail_transcription(path, *, progress_cb):
@@ -154,6 +156,30 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         self.assertEqual(task.status, "failed")
         self.assertEqual(manifest["error"], "模型读取失败")
         self.assertFalse((task_dir / "temp").exists())
+
+    def test_close_interrupts_running_and_queued_tasks_without_waiting(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocked_transcription(path, *, progress_cb):
+            started.set()
+            release.wait(timeout=2)
+            progress_cb({"segment_count": 1, "processed_duration": 1.0, "duration": 1.0})
+            return make_transcription()
+
+        manager = self.make_manager(transcriber=blocked_transcription)
+        running = manager.create_task("https://v.douyin.com/1", cookie="sid=1")
+        queued = manager.create_task("https://v.douyin.com/2", cookie="sid=1")
+        self.assertTrue(started.wait(timeout=1))
+
+        before = time.monotonic()
+        manager.close(wait=False)
+        elapsed = time.monotonic() - before
+        release.set()
+
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(running.status, "interrupted")
+        self.assertEqual(queued.status, "interrupted")
 
 
 if __name__ == "__main__":

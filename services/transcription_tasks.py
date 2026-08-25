@@ -100,10 +100,13 @@ class TranscriptionTaskManager:
         self._transcriber = transcriber
         self._lock = threading.RLock()
         self._tasks: dict[str, TranscriptionTask] = {}
+        self._stopping = threading.Event()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="douyin-asr")
         self._load_tasks()
 
     def create_task(self, url: str, *, cookie: str) -> TranscriptionTask:
+        if self._stopping.is_set():
+            raise RuntimeError("字幕任务管理器正在关闭")
         task = TranscriptionTask(source_url=url)
         with self._lock:
             self._tasks[task.task_id] = task
@@ -126,8 +129,17 @@ class TranscriptionTaskManager:
         with self._lock:
             return any(task.status in ACTIVE_STATUSES for task in self._tasks.values())
 
-    def close(self) -> None:
-        self._executor.shutdown(wait=True, cancel_futures=False)
+    def close(self, *, wait: bool = True) -> None:
+        self._stopping.set()
+        for task in self.list_tasks():
+            if task.status in ACTIVE_STATUSES:
+                self._set_and_persist(
+                    task,
+                    status="interrupted",
+                    message="程序已退出，请重新识别",
+                    error="",
+                )
+        self._executor.shutdown(wait=wait, cancel_futures=True)
 
     def _load_tasks(self) -> None:
         for manifest_path in self.root.glob("*/manifest.json"):
@@ -137,6 +149,7 @@ class TranscriptionTaskManager:
             except (OSError, TypeError, ValueError, json.JSONDecodeError):
                 continue
             if task.status in ACTIVE_STATUSES:
+                shutil.rmtree(manifest_path.parent / "temp", ignore_errors=True)
                 task.set_state(
                     status="interrupted",
                     message="上次运行被中断，请重新识别",
@@ -167,6 +180,7 @@ class TranscriptionTaskManager:
         temp_dir = task_dir / "temp"
         temp_dir.mkdir(parents=True, exist_ok=True)
         try:
+            self._raise_if_stopping()
             self._set_and_persist(
                 task,
                 status="downloading",
@@ -175,6 +189,7 @@ class TranscriptionTaskManager:
             )
 
             def on_download(progress: int, downloaded: int, total: int) -> None:
+                self._raise_if_stopping()
                 self._set_and_persist(
                     task,
                     status="downloading",
@@ -190,6 +205,7 @@ class TranscriptionTaskManager:
                 save_dir=str(temp_dir),
                 progress_cb=on_download,
             )
+            self._raise_if_stopping()
             self._set_and_persist(
                 task,
                 status="loading_model",
@@ -201,6 +217,7 @@ class TranscriptionTaskManager:
             )
 
             def on_transcription(progress: dict[str, float | int]) -> None:
+                self._raise_if_stopping()
                 duration = float(progress.get("duration") or 0)
                 processed = float(progress.get("processed_duration") or 0)
                 percent = 25
@@ -217,6 +234,7 @@ class TranscriptionTaskManager:
                 )
 
             result = self._transcriber(downloaded.path, progress_cb=on_transcription)
+            self._raise_if_stopping()
             if not result.text.strip():
                 raise ValueError("未识别到可用的语音文案")
             self._set_and_persist(
@@ -233,11 +251,23 @@ class TranscriptionTaskManager:
                 error="",
             )
         except Exception as exc:
-            self._set_and_persist(
-                task,
-                status="failed",
-                message=str(exc),
-                error=str(exc),
-            )
+            if self._stopping.is_set():
+                self._set_and_persist(
+                    task,
+                    status="interrupted",
+                    message="程序已退出，请重新识别",
+                    error="",
+                )
+            else:
+                self._set_and_persist(
+                    task,
+                    status="failed",
+                    message=str(exc),
+                    error=str(exc),
+                )
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _raise_if_stopping(self) -> None:
+        if self._stopping.is_set():
+            raise InterruptedError("程序正在退出")

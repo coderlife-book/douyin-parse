@@ -86,6 +86,20 @@ class TranscriptionServiceTests(unittest.TestCase):
             [("demo.mp4", {"beam_size": 5, "vad_filter": True})],
         )
 
+    def test_transcribe_preserves_english_word_boundaries(self):
+        class EnglishModel:
+            def transcribe(self, path, **kwargs):
+                segments = [
+                    SimpleNamespace(start=0.0, end=1.0, text=" Hello "),
+                    SimpleNamespace(start=1.0, end=2.0, text=" world "),
+                ]
+                return iter(segments), SimpleNamespace(duration=2.0, language="en")
+
+        result = transcribe_media("demo.mp4", provider=FakeProvider(EnglishModel()))
+
+        self.assertEqual(result.text, "Hello world")
+        self.assertEqual([item.text for item in result.segments], ["Hello", "world"])
+
 
 if __name__ == "__main__":
     unittest.main()
