@@ -1,19 +1,19 @@
-import os
-
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app_meta import APP_VERSION
+from runtime_paths import web_index_path
 from services.douyin_login import LoginManager, clear_cookie
 from services.download_service import download_video, parse_video_info, open_video_stream
 from services.download_tasks import DownloadTaskManager
 
 
-app = FastAPI(title="Douyin Parse Local API", version="1.0.0")
+app = FastAPI(title="Douyin Parse Local API", version=APP_VERSION)
 login_manager = LoginManager()
 download_task_manager = DownloadTaskManager()
-WEB_INDEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "index.html")
+WEB_INDEX = str(web_index_path())
 
 app.add_middleware(
     CORSMiddleware,

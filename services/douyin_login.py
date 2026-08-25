@@ -7,11 +7,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from runtime_paths import config_path, downloads_path, legacy_cookie_path
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-COOKIE_PATH = os.path.join(BASE_DIR, "douyin_cookie.txt")
-DEFAULT_SAVE_DIR = os.path.join(BASE_DIR, "downloads")
+
+CONFIG_PATH = str(config_path())
+COOKIE_PATH = str(legacy_cookie_path())
+DEFAULT_SAVE_DIR = str(downloads_path())
 LOGIN_PAGE_URL = "https://www.douyin.com/user/self"
 
 
