@@ -1,5 +1,7 @@
 # 抖音字幕解析与 Windows 绿色版实施计划
 
+> 历史基线：本文对应 v1.1.0 首版实施。v1.2.0 模型选择与简体标点改动见 [`2026-08-25-local-asr-model-selection.md`](./2026-08-25-local-asr-model-selection.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在现有抖音下载工具中增加单视频语音转文案、双 Tab Web 界面、Windows 10 x64 绿色版构建和可回滚的离线一键更新。

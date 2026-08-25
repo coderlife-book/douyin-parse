@@ -14,8 +14,10 @@
 - 扫码登录：通过 Playwright 获取抖音登录二维码，并保存 Cookie。
 - 视频解析：解析单条抖音视频信息和可选清晰度。
 - 下载任务：异步下载视频，前端轮询进度，完成后保存 MP4 文件。
-- 字幕解析：使用 `faster-whisper-small`、CPU `int8` 在本机识别视频语音。
-- 文案结果：显示真实时间分段，支持复制全文和下载 UTF-8 TXT。
+- 字幕解析：自动发现本地完整的 `small/medium` 模型，用户可在页面手动选择；默认使用 `small`。
+- 本地 ASR：使用 faster-whisper、CPU `int8` 识别视频语音，不依赖云端转写接口。
+- 简体与标点：中文结果自动繁转简，并为缺少标点的中文分段和中文空格补基础逗号、句号。
+- 文案结果：显示真实时间分段，页面全文、复制内容和 UTF-8 TXT 使用同一结果。
 - 双 Tab 页面：“视频下载”和“字幕解析”共用本机 Cookie 与登录状态。
 - 结果持久化：字幕清单和 TXT 保存在 `data/transcripts/`，重启后仍可查看。
 
@@ -56,26 +58,36 @@ HOST=0.0.0.0 PORT=8787 ./start.sh
 ```bash
 pip install -r requirements.txt
 python -m playwright install chromium
-python packaging/windows/download_model.py --destination models/faster-whisper-small
+python packaging/windows/download_model.py --model small --destination models/faster-whisper-small
+# 可选：下载效果更好但速度更慢的 medium
+python packaging/windows/download_model.py --model medium --destination models/faster-whisper-medium
 python -m uvicorn api_server:app --host 127.0.0.1 --port 8787
 ```
 
-字幕模型固定为 `Systran/faster-whisper-small` revision `536b0662742c02347bc0e980a01041f333bce120`。源码模式首次使用字幕解析前必须把模型下载到 `models/faster-whisper-small/`；Windows 绿色版会直接附带模型。
+源码模式至少准备一个模型。程序只展示核心文件完整的本地模型，不会联网临时下载：
+
+| 页面选项 | 本地目录 | 适用场景 |
+| --- | --- | --- |
+| `Small` | `models/faster-whisper-small/` | 默认，速度优先 |
+| `Medium` | `models/faster-whisper-medium/` | 效果更好，CPU 识别更慢 |
+
+当前不支持 `large-v3`。Windows v1.2.0 完整绿色版同时附带 `small` 和 `medium`。
 
 ## Windows 绿色版
 
-绿色版采用 PyInstaller `onedir`，附带 Python 运行时、Playwright Chromium 和 small 模型。同事解压后双击 `抖音视频工具.exe`，程序会启动本地服务并打开默认浏览器；关闭控制台窗口即可退出。
+绿色版附带 Windows Python 运行时、Playwright Chromium、`small/medium` 模型和 OpenCC 数据。同事完整解压后双击 `抖音视频工具.exe`，程序会启动本地服务并打开默认浏览器；关闭控制台窗口即可退出。
 
-Windows 产物必须在 Windows 环境构建。macOS 不能直接生成或验收 Windows EXE。仓库提供手动工作流 `.github/workflows/build-windows-portable.yml`，也可以在 Windows PowerShell 中运行：
+可复现的 PyInstaller Windows 产物应在 Windows 环境构建。macOS 可以复用已经验证的 Windows 运行时组装绿色目录，但不能完成目标 Windows 双击验收。仓库提供手动工作流 `.github/workflows/build-windows-portable.yml`，也可以在 Windows PowerShell 中运行：
 
 ```powershell
-./packaging/windows/build.ps1 -MinimumVersion "1.1.0"
+./packaging/windows/build.ps1
 ```
 
 输出：
 
-- `releases/抖音视频工具-v1.1.0-win64.zip`：首次发送的完整绿色版。
-- `releases/更新包-v1.1.0.zip`：普通程序核心更新包。
+- `releases/抖音视频工具-v1.2.0-win64.zip`：首次发送的完整绿色版。
+
+首发版本就是最新版本，不生成同版本更新包。后续版本需要更新包时，再使用 `-BuildUpdatePackage -MinimumVersion "1.2.0"` 构建。
 
 详细构建和验收步骤见 [`docs/windows-release.md`](docs/windows-release.md)。
 
@@ -87,6 +99,8 @@ Windows 产物必须在 Windows 环境构建。macOS 不能直接生成或验收
 4. 成功后自动重新启动；失败会恢复 `_rollback/` 中的旧核心。
 
 普通更新不会覆盖 `config.json`、`douyin_cookie.txt`、`data/`、`downloads/`、`models/`、`browsers/`、`一键更新.bat` 或 `updater.ps1`。
+
+首次安装必须发送完整绿色包；更新包不能代替完整包。
 
 ## API
 
@@ -121,7 +135,10 @@ curl -o douyin.mp4 http://127.0.0.1:8787/download/video/task/<task_id>/file
 # 创建字幕任务
 curl -X POST http://127.0.0.1:8787/transcription/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"url":"抖音分享链接","session_id":"<session_id>"}'
+  -d '{"url":"抖音分享链接","session_id":"<session_id>","model":"medium"}'
+
+# 查看本机可选择的 ASR 模型
+curl http://127.0.0.1:8787/asr/models
 
 # 查询字幕任务详情
 curl http://127.0.0.1:8787/transcription/tasks/<task_id>
@@ -140,7 +157,7 @@ douyin-parse/
 ├── services/
 │   ├── douyin_login.py           # 扫码登录、Cookie 读写
 │   ├── download_service.py       # 视频解析和下载
-│   └── download_tasks.py         # 异步下载任务
+│   ├── download_tasks.py         # 异步下载任务
 │   ├── transcription_service.py  # faster-whisper 模型与语音转写
 │   └── transcription_tasks.py    # 单并发队列与字幕持久化
 ├── douyin_video_parser.py        # 抖音视频解析核心逻辑
@@ -159,13 +176,14 @@ douyin-parse/
 
 ## 本地数据
 
-以下文件或目录由本地运行产生，已在 `.gitignore` 中忽略：
+以下文件或目录由本地运行产生，不应提交到远程仓库：
 
 - `config.json`：保存 Cookie 和下载目录配置。
 - `douyin_cookie.txt`：旧版本 Cookie 文件。当前版本首次读取后会迁移到 `config.json` 并删除该文件。
 - `downloads/`：默认下载目录。
 - `data/transcripts/`：字幕任务 JSON 清单与 TXT 文案。
-- `models/faster-whisper-small/`：本地 ASR 模型。
+- `models/faster-whisper-small/`：本地 Small ASR 模型。
+- `models/faster-whisper-medium/`：本地 Medium ASR 模型。
 - `__pycache__/`：Python 缓存。
 
 ## 常见问题
@@ -183,14 +201,18 @@ douyin-parse/
 源码模式执行：
 
 ```bash
-python packaging/windows/download_model.py --destination models/faster-whisper-small
+python packaging/windows/download_model.py --model small --destination models/faster-whisper-small
 ```
 
-绿色版出现该错误说明发布包不完整，应重新解压完整绿色版；不要用普通更新包代替首次安装包。
+如果选择 `medium`，对应目录必须是 `models/faster-whisper-medium/`。绿色版出现该错误说明发布包不完整，应重新解压完整绿色版；不要用普通更新包代替首次安装包。
+
+### 为什么旧文案仍然没有标点或还是繁体
+
+简体和基础标点处理只应用于升级后新创建的字幕任务。历史任务不会自动改写；使用原链接重新识别一次即可。
 
 ### GTX 1050 Ti 为什么没有参与识别
 
-首版针对 i5-10400F 使用 CPU `int8`，以减少 CUDA/cuDNN 体积和驱动兼容问题。程序不承诺固定识别耗时，字幕任务会单并发运行以避免整机过载。
+当前版本针对 i5-10400F 使用 CPU `int8`，以减少 CUDA/cuDNN 体积和驱动兼容问题。程序不承诺固定识别耗时，字幕任务会单并发运行以避免整机过载；`medium` 通常比 `small` 更慢。
 
 ### 无法创建二维码
 

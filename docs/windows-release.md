@@ -2,14 +2,16 @@
 
 ## 产物边界
 
-Windows 绿色版必须在 Windows 10/11 x64 或 GitHub Actions `windows-latest` 上构建。PyInstaller 不是跨平台编译器，因此 macOS 上的源码测试不能替代 EXE 验收。
+可复现的 Windows 绿色版应在 Windows 10/11 x64 或 GitHub Actions `windows-latest` 上构建。PyInstaller 不是跨平台编译器；复用已经验证的 Windows Python、Chromium 和 FFmpeg 运行时可以在其他系统组装目录，但不能替代目标 Windows 10 的最终双击验收。
 
 完整绿色版包含：
 
 ```text
 抖音视频工具/
 ├── 抖音视频工具.exe
-├── _internal/
+├── _internal/                   # PyInstaller 方案
+├── runtime/python/              # 复用运行时方案；与 _internal/ 二选一
+├── runtime/ffmpeg/              # 仅复用运行时方案存在
 ├── browsers/
 ├── models/faster-whisper-small/
 ├── models/faster-whisper-medium/
@@ -26,10 +28,10 @@ Windows 绿色版必须在 Windows 10/11 x64 或 GitHub Actions `windows-latest`
 
 1. 将功能分支推送到 GitHub。
 2. 打开 Actions → `build-windows-portable` → Run workflow。
-3. `minimum_version` 填入允许普通更新的最低已安装版本，例如 `1.1.0`。
+3. 当前首发构建只生成完整包；必填的 `minimum_version` 可填写当前基线 `1.2.0`。
 4. 下载 artifact `douyin-video-tool-win64`。
 
-工作流会执行全部 Python 测试、Windows PowerShell 更新演练、模型和 Chromium 下载、PyInstaller 构建与产物结构校验。首发只需要完整包；后续版本按需生成普通更新包。
+工作流会执行全部 Python 测试、Windows PowerShell 更新演练、模型和 Chromium 下载、PyInstaller 构建与产物结构校验。首发只上传完整包，不应生成同版本更新包；后续版本按需生成普通更新包。
 
 ## Windows 本机构建
 
@@ -48,6 +50,8 @@ pwsh -ExecutionPolicy Bypass -File ./packaging/windows/build.ps1
 
 程序只在网页中展示本地文件完整的 `small/medium` 模型，默认使用 `small`。`medium` 识别效果更好，但在 i5-10400F 上耗时更长。
 
+中文转写会先使用 OpenCC `t2s` 转为简体，再为缺少标点的相邻中文分段和中文空格补基础逗号，必要时补全文句号。模型已有中英文终止标点时不会重复追加。页面回显、复制全文和 TXT 来自同一份持久化全文。
+
 ## 手动生成后续更新包
 
 先把 `app_meta.py` 中的 `APP_VERSION` 提升到目标版本并重新构建绿色目录，然后运行：
@@ -55,14 +59,14 @@ pwsh -ExecutionPolicy Bypass -File ./packaging/windows/build.ps1
 ```powershell
 python ./packaging/windows/build_update_package.py `
   --bundle ./dist/抖音视频工具 `
-  --output ./releases/更新包-v1.1.1.zip `
-  --version 1.1.1 `
-  --minimum-version 1.1.0
+  --output ./releases/更新包-v1.2.1.zip `
+  --version 1.2.1 `
+  --minimum-version 1.2.0
 ```
 
 普通更新包只包含已登记且带 SHA-256 的程序核心。模型、Chromium、Cookie、下载和字幕记录不进入 ZIP。
 
-也可以在构建完整包时追加 `-BuildUpdatePackage -MinimumVersion "1.1.0"`。首发版本不要使用该参数。
+也可以在构建完整包时追加 `-BuildUpdatePackage -MinimumVersion "1.2.0"`。首发版本不要使用该参数。
 
 ## 同事更新步骤
 
@@ -80,10 +84,11 @@ python ./packaging/windows/build_update_package.py `
 2. `/health` 返回 `status=ok`、正确 `version` 和 `asr_model_ready=true`。
 3. 扫码登录后重启，Cookie 仍存在。
 4. 视频下载 Tab 能解析、预览和保存一个 MP4。
-5. 字幕解析 Tab 能把含中文语音的视频转为非空文案，进度和分段数真实变化。
-6. 复制全文与下载 TXT 内容一致，中文无乱码。
-7. 重启后仍可查看 `data/transcripts/` 中的历史文案。
-8. 从上一版本执行普通更新，Cookie、模型、浏览器、下载和字幕记录均保留。
-9. 篡改更新 ZIP 内任一负载文件后，更新被拒绝且旧版本仍可启动。
+5. 字幕解析 Tab 只展示完整存在的 `small/medium`，两个模型都能创建任务。
+6. 中文语音能转为简体文案，缺少标点时有基础逗号和句号，进度及分段数真实变化。
+7. 页面回显、复制全文与下载 TXT 内容一致，中文无乱码。
+8. 重启后仍可查看 `data/transcripts/` 中的历史文案。
+9. 从上一版本执行普通更新，Cookie、模型、浏览器、下载和字幕记录均保留。
+10. 篡改更新 ZIP 内任一负载文件后，更新被拒绝且旧版本仍可启动。
 
-没有完成第 1–9 项时，只能把状态标记为“Windows 构建待验收”，不能宣称绿色版已经交付。
+没有完成第 1–10 项时，只能把状态标记为“Windows 构建待验收”，不能宣称已经完成目标 Windows 验收。
