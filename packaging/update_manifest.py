@@ -11,6 +11,7 @@ EXCLUDED_TOP_LEVEL = {
     "downloads",
     "models",
     "browsers",
+    "runtime",
     "_rollback",
     "update-temp",
     "一键更新.bat",
@@ -19,6 +20,7 @@ EXCLUDED_TOP_LEVEL = {
 
 ALLOWED_UPDATE_TOP_LEVEL = {
     "_internal",
+    "app",
     "web",
     "抖音视频工具.exe",
     "version.json",

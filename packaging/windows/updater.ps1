@@ -15,10 +15,10 @@ function Join-UnicodeChars {
 $ExecutableName = (Join-UnicodeChars @(0x6296, 0x97F3, 0x89C6, 0x9891, 0x5DE5, 0x5177)) + ".exe"
 $ReleaseNotesName = (Join-UnicodeChars @(0x7248, 0x672C, 0x8BF4, 0x660E)) + ".txt"
 $ProtectedNames = @(
-    "config.json", "douyin_cookie.txt", "data", "downloads", "models", "browsers",
+    "config.json", "douyin_cookie.txt", "data", "downloads", "models", "browsers", "runtime",
     "updater.ps1", "_rollback"
 )
-$AllowedCoreNames = @("_internal", "web", $ExecutableName, "version.json", $ReleaseNotesName)
+$AllowedCoreNames = @("_internal", "app", "web", $ExecutableName, "version.json", $ReleaseNotesName)
 
 function Resolve-UpdatePackage {
     param([string]$Root, [string]$ExplicitPackage)

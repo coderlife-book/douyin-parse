@@ -1,4 +1,6 @@
 import importlib.util
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -74,6 +76,17 @@ class WindowsPackagingTests(unittest.TestCase):
 
         content.decode("ascii")
         self.assertIn(b"updater.ps1", content)
+
+    def test_model_downloader_can_start_from_repository_root(self):
+        completed = subprocess.run(
+            [sys.executable, "packaging/windows/download_model.py", "--help"],
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     @staticmethod
     def write(root, relative, content):

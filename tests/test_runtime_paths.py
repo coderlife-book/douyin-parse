@@ -25,6 +25,10 @@ class RuntimePathTests(unittest.TestCase):
                 root / "models" / "faster-whisper-small",
             )
             self.assertEqual(runtime_paths.browser_path(), root / "browsers")
+            self.assertEqual(
+                runtime_paths.portable_chromium_path(),
+                root / "browsers" / "chromium" / "chrome.exe",
+            )
             self.assertEqual(runtime_paths.web_index_path(), root / "web" / "index.html")
 
     def test_frozen_root_is_executable_parent(self):

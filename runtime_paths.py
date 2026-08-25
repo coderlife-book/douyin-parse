@@ -38,5 +38,9 @@ def browser_path() -> Path:
     return portable_root() / "browsers"
 
 
+def portable_chromium_path() -> Path:
+    return browser_path() / "chromium" / "chrome.exe"
+
+
 def web_index_path() -> Path:
     return portable_root() / "web" / "index.html"

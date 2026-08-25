@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from runtime_paths import config_path, downloads_path, legacy_cookie_path
+from runtime_paths import config_path, downloads_path, legacy_cookie_path, portable_chromium_path
 
 
 CONFIG_PATH = str(config_path())
@@ -163,7 +163,11 @@ class LoginSession:
         browser = None
         try:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=False)
+                launch_options = {"headless": False}
+                portable_chromium = portable_chromium_path()
+                if portable_chromium.is_file():
+                    launch_options["executable_path"] = str(portable_chromium)
+                browser = playwright.chromium.launch(**launch_options)
                 context = browser.new_context(
                     viewport={"width": 1280, "height": 720},
                     user_agent=(
