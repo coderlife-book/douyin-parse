@@ -62,17 +62,28 @@ class WhisperModelProvider:
 DEFAULT_MODEL_PROVIDER = WhisperModelProvider(model_path())
 
 
-def _join_segment_texts(segments: list[TranscriptSegment]) -> str:
+def _join_segment_texts(
+    segments: list[TranscriptSegment],
+    leading_spaces: list[bool],
+) -> str:
     text = ""
-    for segment in segments:
-        needs_space = (
+    closing_punctuation = ".,!?;:%)]}"
+    for index, segment in enumerate(segments):
+        implicit_word_boundary = (
             text
             and text[-1].isascii()
             and text[-1].isalnum()
             and segment.text[0].isascii()
             and segment.text[0].isalnum()
         )
-        if needs_space:
+        explicit_model_boundary = (
+            text
+            and leading_spaces[index]
+            and text[-1].isascii()
+            and segment.text[0].isascii()
+            and segment.text[0] not in closing_punctuation
+        )
+        if implicit_word_boundary or explicit_model_boundary:
             text += " "
         text += segment.text
     return text
@@ -92,9 +103,11 @@ def transcribe_media(
     )
     duration = float(info.duration or 0)
     segments: list[TranscriptSegment] = []
+    leading_spaces: list[bool] = []
 
     for raw in raw_segments:
-        text = raw.text.strip()
+        raw_text = str(raw.text or "")
+        text = raw_text.strip()
         if text:
             segments.append(
                 TranscriptSegment(
@@ -103,6 +116,7 @@ def transcribe_media(
                     text=text,
                 )
             )
+            leading_spaces.append(bool(raw_text[:1].isspace()))
         if progress_cb:
             progress_cb(
                 {
@@ -116,5 +130,5 @@ def transcribe_media(
         duration=duration,
         language=str(info.language or ""),
         segments=segments,
-        text=_join_segment_texts(segments),
+        text=_join_segment_texts(segments, leading_spaces),
     )

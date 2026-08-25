@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Callable
@@ -17,6 +17,7 @@ from services.transcription_service import TranscriptSegment, TranscriptionResul
 
 
 ACTIVE_STATUSES = {"queued", "downloading", "loading_model", "transcribing"}
+WORKER_STOP = object()
 
 
 @dataclass
@@ -101,17 +102,26 @@ class TranscriptionTaskManager:
         self._lock = threading.RLock()
         self._tasks: dict[str, TranscriptionTask] = {}
         self._stopping = threading.Event()
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="douyin-asr")
+        self._work_queue: queue.Queue[object] = queue.Queue()
+        self._worker_stop_sent = False
         self._load_tasks()
+        self._worker_thread = threading.Thread(
+            target=self._worker_loop,
+            name="douyin-asr",
+            daemon=True,
+        )
+        self._worker_thread.start()
 
     def create_task(self, url: str, *, cookie: str) -> TranscriptionTask:
         if self._stopping.is_set():
             raise RuntimeError("字幕任务管理器正在关闭")
         task = TranscriptionTask(source_url=url)
         with self._lock:
+            if self._stopping.is_set():
+                raise RuntimeError("字幕任务管理器正在关闭")
             self._tasks[task.task_id] = task
-        self._persist(task)
-        self._executor.submit(self._run_task, task, cookie)
+            self._persist(task)
+            self._work_queue.put((task, cookie))
         return task
 
     def get_task(self, task_id: str) -> TranscriptionTask | None:
@@ -130,8 +140,18 @@ class TranscriptionTaskManager:
             return any(task.status in ACTIVE_STATUSES for task in self._tasks.values())
 
     def close(self, *, wait: bool = True) -> None:
-        self._stopping.set()
-        for task in self.list_tasks():
+        with self._lock:
+            self._stopping.set()
+            tasks = list(self._tasks.values())
+            if not self._worker_stop_sent:
+                while True:
+                    try:
+                        self._work_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                self._work_queue.put(WORKER_STOP)
+                self._worker_stop_sent = True
+        for task in tasks:
             if task.status in ACTIVE_STATUSES:
                 self._set_and_persist(
                     task,
@@ -139,7 +159,17 @@ class TranscriptionTaskManager:
                     message="程序已退出，请重新识别",
                     error="",
                 )
-        self._executor.shutdown(wait=wait, cancel_futures=True)
+        if wait:
+            self._worker_thread.join()
+
+    def _worker_loop(self) -> None:
+        while True:
+            work = self._work_queue.get()
+            if work is WORKER_STOP:
+                return
+            task, cookie = work
+            if not self._stopping.is_set():
+                self._run_task(task, cookie)
 
     def _load_tasks(self) -> None:
         for manifest_path in self.root.glob("*/manifest.json"):

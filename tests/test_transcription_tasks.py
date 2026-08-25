@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -180,6 +182,44 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         self.assertLess(elapsed, 0.5)
         self.assertEqual(running.status, "interrupted")
         self.assertEqual(queued.status, "interrupted")
+
+    def test_blocked_transcriber_does_not_keep_python_process_alive_after_close(self):
+        script = r'''
+import tempfile
+import threading
+from pathlib import Path
+from types import SimpleNamespace
+from services.transcription_tasks import TranscriptionTaskManager
+
+started = threading.Event()
+
+def downloader(url, *, cookie, save_dir, progress_cb=None):
+    path = Path(save_dir) / "source.mp4"
+    path.write_bytes(b"video")
+    return SimpleNamespace(path=str(path))
+
+def blocked(path, *, progress_cb):
+    started.set()
+    threading.Event().wait(30)
+
+with tempfile.TemporaryDirectory() as root:
+    manager = TranscriptionTaskManager(root=root, downloader=downloader, transcriber=blocked)
+    manager.create_task("https://v.douyin.com/1", cookie="sid=1")
+    assert started.wait(timeout=1)
+    manager.close(wait=False)
+print("closed")
+'''
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("closed", completed.stdout)
 
 
 if __name__ == "__main__":

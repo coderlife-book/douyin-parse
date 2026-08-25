@@ -100,6 +100,19 @@ class TranscriptionServiceTests(unittest.TestCase):
         self.assertEqual(result.text, "Hello world")
         self.assertEqual([item.text for item in result.segments], ["Hello", "world"])
 
+    def test_transcribe_preserves_space_after_english_punctuation(self):
+        class EnglishModel:
+            def transcribe(self, path, **kwargs):
+                segments = [
+                    SimpleNamespace(start=0.0, end=1.0, text=" Hello."),
+                    SimpleNamespace(start=1.0, end=2.0, text=" How are you?"),
+                ]
+                return iter(segments), SimpleNamespace(duration=2.0, language="en")
+
+        result = transcribe_media("demo.mp4", provider=FakeProvider(EnglishModel()))
+
+        self.assertEqual(result.text, "Hello. How are you?")
+
 
 if __name__ == "__main__":
     unittest.main()
