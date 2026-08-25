@@ -4,3 +4,4 @@ gmssl
 fastapi
 uvicorn[standard]
 faster-whisper
+httpx2

@@ -4,15 +4,17 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app_meta import APP_VERSION
-from runtime_paths import web_index_path
+from runtime_paths import model_path, web_index_path
 from services.douyin_login import LoginManager, clear_cookie
 from services.download_service import download_video, parse_video_info, open_video_stream
 from services.download_tasks import DownloadTaskManager
+from services.transcription_tasks import TranscriptionTaskManager
 
 
 app = FastAPI(title="Douyin Parse Local API", version=APP_VERSION)
 login_manager = LoginManager()
 download_task_manager = DownloadTaskManager()
+transcription_task_manager = TranscriptionTaskManager()
 WEB_INDEX = str(web_index_path())
 
 app.add_middleware(
@@ -39,6 +41,11 @@ class ParseVideoRequest(BaseModel):
     session_id: str | None = None
 
 
+class TranscriptionRequest(BaseModel):
+    url: str = Field(min_length=1)
+    session_id: str | None = None
+
+
 @app.get("/")
 def index():
     return FileResponse(WEB_INDEX)
@@ -49,6 +56,9 @@ def health() -> dict:
     return {
         "status": "ok",
         "has_cookie": bool(login_manager.get_cookie()),
+        "version": APP_VERSION,
+        "asr_model_ready": model_path().is_dir(),
+        "transcription_busy": transcription_task_manager.is_busy(),
     }
 
 
@@ -168,4 +178,41 @@ def get_download_video_task_file(task_id: str):
         task.result.path,
         media_type=task.result.content_type,
         filename=task.result.filename,
+    )
+
+
+@app.post("/transcription/tasks")
+def create_transcription_task(payload: TranscriptionRequest) -> dict:
+    cookie = login_manager.get_cookie(payload.session_id)
+    if not cookie:
+        raise HTTPException(status_code=401, detail="请先扫码登录抖音")
+    task = transcription_task_manager.create_task(payload.url, cookie=cookie)
+    return task.snapshot()
+
+
+@app.get("/transcription/tasks")
+def list_transcription_tasks() -> list[dict]:
+    return [task.snapshot() for task in transcription_task_manager.list_tasks()]
+
+
+@app.get("/transcription/tasks/{task_id}")
+def get_transcription_task(task_id: str) -> dict:
+    task = transcription_task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="字幕任务不存在")
+    return task.snapshot(include_segments=True)
+
+
+@app.get("/transcription/tasks/{task_id}/text")
+def get_transcription_text(task_id: str):
+    task = transcription_task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="字幕任务不存在")
+    path = transcription_task_manager.text_path(task_id)
+    if task.status != "done" or not path.is_file():
+        raise HTTPException(status_code=409, detail="字幕任务尚未完成")
+    return FileResponse(
+        str(path),
+        media_type="text/plain; charset=utf-8",
+        filename=f"字幕-{task_id}.txt",
     )

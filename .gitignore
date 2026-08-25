@@ -16,6 +16,7 @@ douyin_cookie copy.txt
 
 # 下载文件
 downloads/
+data/
 *.mp4
 
 # IDE
