@@ -18,7 +18,7 @@ class ConcurrencyTracker:
         self.maximum = 0
         self.lock = threading.Lock()
 
-    def transcribe(self, path, *, progress_cb):
+    def transcribe(self, path, *, model_name, progress_cb):
         with self.lock:
             self.active += 1
             self.maximum = max(self.maximum, self.active)
@@ -77,7 +77,9 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         manager = TranscriptionTaskManager(
             root=self.root,
             downloader=fake_downloader,
-            transcriber=transcriber or (lambda path, *, progress_cb: make_transcription()),
+            transcriber=transcriber or (
+                lambda path, *, model_name, progress_cb: make_transcription()
+            ),
         )
         self.managers.append(manager)
         return manager
@@ -116,6 +118,29 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         self.assertEqual(manifest["segments"], [{"start": 0.0, "end": 2.0, "text": "中文文案"}])
         self.assertFalse((task_dir / "temp").exists())
 
+    def test_selected_model_is_persisted_and_passed_to_transcriber(self):
+        selected_models = []
+
+        def transcribe(path, *, model_name, progress_cb):
+            selected_models.append(model_name)
+            return make_transcription()
+
+        manager = self.make_manager(transcriber=transcribe)
+
+        task = manager.create_task(
+            "https://v.douyin.com/1",
+            cookie="sid=1",
+            model="medium",
+        )
+        self.wait_terminal(task)
+
+        manifest = json.loads(
+            (self.root / task.task_id / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(task.model, "medium")
+        self.assertEqual(manifest["model"], "medium")
+        self.assertEqual(selected_models, ["medium"])
+
     def test_restart_marks_unfinished_manifest_interrupted(self):
         task_dir = self.root / "task-running"
         (task_dir / "temp").mkdir(parents=True)
@@ -142,10 +167,11 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         self.assertIsNotNone(restored)
         self.assertEqual(restored.status, "interrupted")
         self.assertEqual(restored.message, "上次运行被中断，请重新识别")
+        self.assertEqual(restored.model, "small")
         self.assertFalse((task_dir / "temp").exists())
 
     def test_failed_transcription_persists_error_and_removes_temporary_media(self):
-        def fail_transcription(path, *, progress_cb):
+        def fail_transcription(path, *, model_name, progress_cb):
             raise RuntimeError("模型读取失败")
 
         manager = self.make_manager(transcriber=fail_transcription)
@@ -163,7 +189,7 @@ class TranscriptionTaskManagerTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def blocked_transcription(path, *, progress_cb):
+        def blocked_transcription(path, *, model_name, progress_cb):
             started.set()
             release.wait(timeout=2)
             progress_cb({"segment_count": 1, "processed_duration": 1.0, "duration": 1.0})
@@ -198,7 +224,7 @@ def downloader(url, *, cookie, save_dir, progress_cb=None):
     path.write_bytes(b"video")
     return SimpleNamespace(path=str(path))
 
-def blocked(path, *, progress_cb):
+def blocked(path, *, model_name, progress_cb):
     started.set()
     threading.Event().wait(30)
 

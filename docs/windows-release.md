@@ -12,6 +12,7 @@ Windows 绿色版必须在 Windows 10/11 x64 或 GitHub Actions `windows-latest`
 ├── _internal/
 ├── browsers/
 ├── models/faster-whisper-small/
+├── models/faster-whisper-medium/
 ├── web/index.html
 ├── version.json
 ├── 版本说明.txt
@@ -28,22 +29,24 @@ Windows 绿色版必须在 Windows 10/11 x64 或 GitHub Actions `windows-latest`
 3. `minimum_version` 填入允许普通更新的最低已安装版本，例如 `1.1.0`。
 4. 下载 artifact `douyin-video-tool-win64`。
 
-工作流会执行全部 Python 测试、Windows PowerShell 更新演练、模型和 Chromium 下载、PyInstaller 构建、产物结构校验，并上传 `releases/` 下的完整包和普通更新包。
+工作流会执行全部 Python 测试、Windows PowerShell 更新演练、模型和 Chromium 下载、PyInstaller 构建与产物结构校验。首发只需要完整包；后续版本按需生成普通更新包。
 
 ## Windows 本机构建
 
-使用已安装 Python 3.12 和 PowerShell 7 的 Windows 构建机（目标同事电脑运行绿色版和更新器不需要安装这些环境）：
+使用已安装 Python 3.12 和 PowerShell 7.3+ 的 Windows 构建机（目标同事电脑运行绿色版和更新器不需要安装这些环境）：
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File ./packaging/windows/build.ps1 -MinimumVersion "1.1.0"
+pwsh -ExecutionPolicy Bypass -File ./packaging/windows/build.ps1
 ```
 
-构建脚本使用 `requirements-windows.lock`，模型固定为：
+构建脚本使用 `requirements-windows.lock`，内置模型固定为：
 
-- 仓库：`Systran/faster-whisper-small`
-- revision：`536b0662742c02347bc0e980a01041f333bce120`
+- `small`：`Systran/faster-whisper-small@536b0662742c02347bc0e980a01041f333bce120`
+- `medium`：`Systran/faster-whisper-medium@08e178d48790749d25932bbc082711ddcfdfbc4f`
 - 推理设备：CPU
 - 计算类型：`int8`
+
+程序只在网页中展示本地文件完整的 `small/medium` 模型，默认使用 `small`。`medium` 识别效果更好，但在 i5-10400F 上耗时更长。
 
 ## 手动生成后续更新包
 
@@ -58,6 +61,8 @@ python ./packaging/windows/build_update_package.py `
 ```
 
 普通更新包只包含已登记且带 SHA-256 的程序核心。模型、Chromium、Cookie、下载和字幕记录不进入 ZIP。
+
+也可以在构建完整包时追加 `-BuildUpdatePackage -MinimumVersion "1.1.0"`。首发版本不要使用该参数。
 
 ## 同事更新步骤
 

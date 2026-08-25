@@ -44,6 +44,42 @@ class RuntimePathTests(unittest.TestCase):
         ):
             self.assertEqual(runtime_paths.portable_root(), Path("/portable"))
 
+    def test_available_asr_models_only_returns_complete_supported_models(self):
+        with tempfile.TemporaryDirectory() as temp_dir, mock.patch.dict(
+            os.environ,
+            {"DOUYIN_PARSE_ROOT": temp_dir},
+        ):
+            root = Path(temp_dir)
+            for filename in ("config.json", "model.bin", "tokenizer.json"):
+                path = root / "models" / "faster-whisper-medium" / filename
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("ready", encoding="utf-8")
+            incomplete = root / "models" / "faster-whisper-small"
+            incomplete.mkdir(parents=True)
+            (incomplete / "config.json").write_text("{}", encoding="utf-8")
+            unsupported = root / "models" / "faster-whisper-large-v3"
+            unsupported.mkdir(parents=True)
+            for filename in ("config.json", "model.bin", "tokenizer.json"):
+                (unsupported / filename).write_text("ready", encoding="utf-8")
+
+            models = runtime_paths.available_asr_models()
+
+        self.assertEqual(
+            models,
+            [
+                {
+                    "id": "medium",
+                    "label": "Medium",
+                    "description": "效果更好，识别速度较慢",
+                    "is_default": False,
+                }
+            ],
+        )
+
+    def test_asr_model_path_rejects_unsupported_model(self):
+        with self.assertRaisesRegex(ValueError, "不支持的 ASR 模型"):
+            runtime_paths.asr_model_path("large-v3")
+
 
 if __name__ == "__main__":
     unittest.main()

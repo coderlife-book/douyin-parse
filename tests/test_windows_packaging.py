@@ -24,7 +24,7 @@ class WindowsPackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             bundle = Path(temp_dir)
             self.write(bundle, "抖音视频工具.exe", b"exe")
-            self.write(bundle, "_internal/python312.dll", b"python")
+            self.write(bundle, "runtime/python/python.exe", b"python")
             self.write(bundle, "web/index.html", b"html")
             self.write(bundle, "version.json", b'{"version":"1.1.0"}')
             self.write(bundle, "一键更新.bat", b"bat")
@@ -32,6 +32,9 @@ class WindowsPackagingTests(unittest.TestCase):
             self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
             self.write(bundle, "models/faster-whisper-small/model.bin", b"model")
             self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
+            self.write(bundle, "models/faster-whisper-medium/config.json", b"{}")
+            self.write(bundle, "models/faster-whisper-medium/model.bin", b"model")
+            self.write(bundle, "models/faster-whisper-medium/tokenizer.json", b"{}")
             self.write(bundle, "browsers/chromium/chrome.exe", b"browser")
 
             self.assertEqual(verifier.missing_core_paths(bundle), set())
@@ -48,6 +51,9 @@ class WindowsPackagingTests(unittest.TestCase):
             self.write(bundle, "updater.ps1", b"powershell")
             self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
             self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
+            self.write(bundle, "models/faster-whisper-medium/config.json", b"{}")
+            self.write(bundle, "models/faster-whisper-medium/model.bin", b"model")
+            self.write(bundle, "models/faster-whisper-medium/tokenizer.json", b"{}")
             self.write(bundle, "browsers/chromium/chrome.exe", b"browser")
 
             self.assertEqual(
@@ -67,9 +73,36 @@ class WindowsPackagingTests(unittest.TestCase):
             self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
             self.write(bundle, "models/faster-whisper-small/model.bin", b"model")
             self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
+            self.write(bundle, "models/faster-whisper-medium/config.json", b"{}")
+            self.write(bundle, "models/faster-whisper-medium/model.bin", b"model")
+            self.write(bundle, "models/faster-whisper-medium/tokenizer.json", b"{}")
             self.write(bundle, "browsers/chromium/chrome.exe", b"browser")
 
             self.assertEqual(verifier.missing_core_paths(bundle), {"updater.ps1"})
+
+    def test_missing_medium_model_is_reported(self):
+        verifier = load_verifier()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundle = Path(temp_dir)
+            self.write(bundle, "抖音视频工具.exe", b"exe")
+            self.write(bundle, "_internal/python312.dll", b"python")
+            self.write(bundle, "web/index.html", b"html")
+            self.write(bundle, "version.json", b'{"version":"1.2.0"}')
+            self.write(bundle, "一键更新.bat", b"bat")
+            self.write(bundle, "updater.ps1", b"powershell")
+            self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
+            self.write(bundle, "models/faster-whisper-small/model.bin", b"model")
+            self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
+            self.write(bundle, "browsers/chromium/chrome.exe", b"browser")
+
+            self.assertEqual(
+                verifier.missing_core_paths(bundle),
+                {
+                    "models/faster-whisper-medium/config.json",
+                    "models/faster-whisper-medium/model.bin",
+                    "models/faster-whisper-medium/tokenizer.json",
+                },
+            )
 
     def test_one_click_batch_is_ascii_and_calls_ascii_updater_name(self):
         content = (ROOT_DIR / "packaging" / "windows" / "一键更新.bat").read_bytes()

@@ -5,3 +5,4 @@ fastapi
 uvicorn[standard]
 faster-whisper
 httpx2
+opencc-python-reimplemented==0.1.7

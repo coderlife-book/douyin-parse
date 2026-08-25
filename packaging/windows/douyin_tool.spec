@@ -5,11 +5,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 root = Path(SPECPATH).parents[1]
 hiddenimports = []
-for package in ("faster_whisper", "ctranslate2", "av", "playwright", "uvicorn"):
+for package in ("faster_whisper", "ctranslate2", "av", "opencc", "playwright", "uvicorn"):
     hiddenimports.extend(collect_submodules(package))
 
 binaries = collect_dynamic_libs("ctranslate2") + collect_dynamic_libs("av")
-datas = collect_data_files("faster_whisper")
+datas = collect_data_files("faster_whisper") + collect_data_files("opencc")
 
 analysis = Analysis(
     [str(root / "desktop_launcher.py")],

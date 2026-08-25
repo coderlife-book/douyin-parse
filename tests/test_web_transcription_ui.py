@@ -47,6 +47,8 @@ class WebTranscriptionUiTests(unittest.TestCase):
         labels = [attrs for tag, attrs in self.elements if tag == "label"]
 
         self.assertTrue(any(attrs.get("for") == "transcriptionUrl" for attrs in labels))
+        self.assertTrue(any(attrs.get("for") == "transcriptionModel" for attrs in labels))
+        self.assertEqual(self.find_by_id("transcriptionModel")[0], "select")
         self.assertEqual(self.find_by_id("transcriptionStatus")[1]["aria-live"], "polite")
         self.find_by_id("transcriptionProgressFill")
         _, result_attrs = self.find_by_id("transcriptResult")

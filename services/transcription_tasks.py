@@ -23,6 +23,7 @@ WORKER_STOP = object()
 @dataclass
 class TranscriptionTask:
     source_url: str
+    model: str = "small"
     task_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     status: str = "queued"
     message: str = "等待识别"
@@ -60,6 +61,7 @@ class TranscriptionTask:
         return {
             "task_id": self.task_id,
             "source_url": self.source_url,
+            "model": self.model,
             "status": self.status,
             "message": self.message,
             "progress": self.progress,
@@ -112,10 +114,10 @@ class TranscriptionTaskManager:
         )
         self._worker_thread.start()
 
-    def create_task(self, url: str, *, cookie: str) -> TranscriptionTask:
+    def create_task(self, url: str, *, cookie: str, model: str = "small") -> TranscriptionTask:
         if self._stopping.is_set():
             raise RuntimeError("字幕任务管理器正在关闭")
-        task = TranscriptionTask(source_url=url)
+        task = TranscriptionTask(source_url=url, model=model)
         with self._lock:
             if self._stopping.is_set():
                 raise RuntimeError("字幕任务管理器正在关闭")
@@ -263,7 +265,11 @@ class TranscriptionTaskManager:
                     duration=duration,
                 )
 
-            result = self._transcriber(downloaded.path, progress_cb=on_transcription)
+            result = self._transcriber(
+                downloaded.path,
+                model_name=task.model,
+                progress_cb=on_transcription,
+            )
             self._raise_if_stopping()
             if not result.text.strip():
                 raise ValueError("未识别到可用的语音文案")

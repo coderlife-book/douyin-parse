@@ -147,7 +147,8 @@
       flex-wrap: wrap;
     }
 
-    input {
+    input,
+    select {
       width: 100%;
       min-height: 48px;
       border: 1px solid var(--line);
@@ -159,7 +160,8 @@
       outline: none;
     }
 
-    input:focus {
+    input:focus,
+    select:focus {
       border-color: rgba(217, 79, 48, 0.72);
       box-shadow: 0 0 0 4px rgba(217, 79, 48, 0.12);
     }
@@ -947,7 +949,11 @@
           <section class="card stack">
             <p class="transcription-kicker">Local ASR · CPU INT8</p>
             <h2>把视频里的声音，整理成可复制文案</h2>
-            <p class="transcription-intro">粘贴单条抖音视频链接。程序会临时下载视频，在本机使用 small 模型识别语音，完成后自动删除临时媒体。</p>
+            <p class="transcription-intro">粘贴单条抖音视频链接，选择本机已有的模型识别语音。完成后会自动删除临时媒体。</p>
+            <label class="field-label" for="transcriptionModel">识别模型</label>
+            <select id="transcriptionModel" disabled>
+              <option value="">正在检测本地模型…</option>
+            </select>
             <label class="field-label" for="transcriptionUrl">抖音视频链接</label>
             <div class="row">
               <input id="transcriptionUrl" placeholder="粘贴 https://v.douyin.com/..." autocomplete="off">
@@ -1006,6 +1012,7 @@
       transcriptionTasks: [],
       transcriptionPollers: {},
       activeTranscript: null,
+      asrModels: [],
     };
 
     const el = {
@@ -1045,6 +1052,7 @@
       businessTabs: document.querySelectorAll(".business-tab"),
       tabPanels: document.querySelectorAll(".tab-panel"),
       transcriptionUrl: document.getElementById("transcriptionUrl"),
+      transcriptionModel: document.getElementById("transcriptionModel"),
       transcribeBtn: document.getElementById("transcribeBtn"),
       transcriptionStatus: document.getElementById("transcriptionStatus"),
       transcriptionProgress: document.getElementById("transcriptionProgress"),
@@ -1102,7 +1110,7 @@
         el.cookieValue.textContent = "已检测";
         el.parseBtn.disabled = false;
         el.downloadBtn.disabled = !state.parsed;
-        el.transcribeBtn.disabled = false;
+        el.transcribeBtn.disabled = !state.asrModels.length;
         el.loginCard.style.display = "none";
         el.logoutRow.style.display = "";
         el.loginHint.className = "login-hint active";
@@ -1131,6 +1139,35 @@
         throw new Error(data.detail || `请求失败：${response.status}`);
       }
       return data;
+    }
+
+    async function loadAsrModels() {
+      try {
+        const models = await requestJson("/asr/models", { headers: headers() });
+        state.asrModels = models;
+        el.transcriptionModel.innerHTML = "";
+        models.forEach(model => {
+          const option = document.createElement("option");
+          option.value = model.id;
+          option.textContent = `${model.label} · ${model.description}`;
+          option.selected = Boolean(model.is_default);
+          el.transcriptionModel.appendChild(option);
+        });
+        el.transcriptionModel.disabled = !models.length;
+        el.transcribeBtn.disabled = !state.hasCookie || !models.length;
+        if (!models.length) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "未检测到本地 ASR 模型";
+          el.transcriptionModel.appendChild(option);
+          setStatus(el.transcriptionStatus, "未检测到可用的本地 ASR 模型", "bad");
+        }
+      } catch (error) {
+        state.asrModels = [];
+        el.transcriptionModel.disabled = true;
+        el.transcribeBtn.disabled = true;
+        setStatus(el.transcriptionStatus, `模型检测失败：${error.message}`, "bad");
+      }
     }
 
     async function checkHealth() {
@@ -1800,7 +1837,7 @@
       state.activeTranscript = task;
       el.transcriptResult.hidden = false;
       el.transcriptTitle.textContent = task.desc || "识别结果";
-      const metadata = [task.author_nickname, task.duration ? `${formatDuration(task.duration)} · ${task.segment_count || 0} 段` : ""].filter(Boolean);
+      const metadata = [task.author_nickname, task.model ? `${task.model} 模型` : "", task.duration ? `${formatDuration(task.duration)} · ${task.segment_count || 0} 段` : ""].filter(Boolean);
       el.transcriptMeta.textContent = metadata.join(" · ");
       el.transcriptText.textContent = task.text || "未识别到文案";
       el.downloadTranscriptBtn.href = `/transcription/tasks/${encodeURIComponent(task.task_id)}/text`;
@@ -1841,7 +1878,7 @@
         const meta = document.createElement("div");
         meta.className = "transcript-task-meta";
         const stage = task.status === "done" ? `已完成 · ${task.segment_count || 0} 段` : (task.message || task.status);
-        meta.textContent = [task.author_nickname, stage].filter(Boolean).join(" · ");
+        meta.textContent = [task.author_nickname, task.model ? `${task.model} 模型` : "", stage].filter(Boolean).join(" · ");
         const open = document.createElement("button");
         open.type = "button";
         open.textContent = task.status === "done" ? "查看文案" : "查看进度";
@@ -1905,6 +1942,11 @@
         setStatus(el.transcriptionStatus, "请先输入抖音链接", "bad");
         return;
       }
+      const model = el.transcriptionModel.value;
+      if (!model) {
+        setStatus(el.transcriptionStatus, "请选择本地可用的 ASR 模型", "bad");
+        return;
+      }
       el.transcribeBtn.disabled = true;
       el.transcribeBtn.classList.add("loading");
       el.transcribeBtn.textContent = "识别中";
@@ -1914,7 +1956,7 @@
         const task = await requestJson("/transcription/tasks", {
           method: "POST",
           headers: headers(true),
-          body: JSON.stringify({ url, session_id: state.sessionId || null }),
+          body: JSON.stringify({ url, session_id: state.sessionId || null, model }),
         });
         upsertTranscriptionTask(task);
         updateTranscriptionProgress(task);
@@ -1923,7 +1965,7 @@
       } catch (error) {
         setStatus(el.transcriptionStatus, error.message, "bad");
       } finally {
-        el.transcribeBtn.disabled = !state.hasCookie;
+        el.transcribeBtn.disabled = !state.hasCookie || !state.asrModels.length;
         el.transcribeBtn.classList.remove("loading");
         el.transcribeBtn.textContent = "开始识别";
       }
@@ -1971,6 +2013,7 @@
     });
 
     checkHealth();
+    loadAsrModels();
     restoreTasks();
     loadTranscriptionTasks();
   </script>

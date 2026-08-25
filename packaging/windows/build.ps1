@@ -1,10 +1,14 @@
-param([string]$MinimumVersion = "1.1.0")
+param(
+    [string]$MinimumVersion = "1.1.0",
+    [switch]$BuildUpdatePackage
+)
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    throw "PowerShell 7 or newer is required to build the Windows bundle."
+if ($PSVersionTable.PSVersion -lt [Version]"7.3") {
+    throw "PowerShell 7.3 or newer is required to build the Windows bundle."
 }
+$PSNativeCommandUseErrorActionPreference = $true
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $BuildRoot = Join-Path $ProjectRoot "build"
@@ -30,7 +34,8 @@ $Python = Join-Path $EnvironmentRoot "Scripts\python.exe"
 
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $AssetsRoot "browsers"
 & $Python -m playwright install chromium
-& $Python packaging\windows\download_model.py --destination (Join-Path $AssetsRoot "models\faster-whisper-small")
+& $Python packaging\windows\download_model.py --model small --destination (Join-Path $AssetsRoot "models\faster-whisper-small")
+& $Python packaging\windows\download_model.py --model medium --destination (Join-Path $AssetsRoot "models\faster-whisper-medium")
 
 & $Python -m PyInstaller `
     --noconfirm `
@@ -46,7 +51,7 @@ Copy-Item -Force (Join-Path $PSScriptRoot "一键更新.bat") (Join-Path $Bundle
 Copy-Item -Force (Join-Path $PSScriptRoot "updater.ps1") (Join-Path $BundleRoot "updater.ps1")
 
 $Version = (& $Python -c "from app_meta import APP_VERSION; print(APP_VERSION)").Trim()
-"抖音视频工具 v$Version`r`nCPU small 离线字幕版" | Set-Content -Encoding UTF8 (Join-Path $BundleRoot "版本说明.txt")
+"抖音视频工具 v$Version`r`nCPU small + medium 离线字幕版" | Set-Content -Encoding UTF8 (Join-Path $BundleRoot "版本说明.txt")
 @{ version = $Version; update_protocol = 1 } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $BundleRoot "version.json")
 & $Python packaging\windows\verify_bundle.py $BundleRoot
 & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File packaging\windows\test_bundle_runtime.ps1 -Bundle $BundleRoot
@@ -56,10 +61,12 @@ if (Test-Path $Archive) { Remove-Item -Force $Archive }
 Compress-Archive -Path (Join-Path $BundleRoot "*") -DestinationPath $Archive -CompressionLevel Optimal
 Write-Host "Windows 绿色版已生成：$Archive"
 
-$UpdateArchive = Join-Path $ReleaseRoot "更新包-v$Version.zip"
-& $Python packaging\windows\build_update_package.py `
-    --bundle $BundleRoot `
-    --output $UpdateArchive `
-    --version $Version `
-    --minimum-version $MinimumVersion
-Write-Host "普通更新包已生成：$UpdateArchive"
+if ($BuildUpdatePackage) {
+    $UpdateArchive = Join-Path $ReleaseRoot "更新包-v$Version.zip"
+    & $Python packaging\windows\build_update_package.py `
+        --bundle $BundleRoot `
+        --output $UpdateArchive `
+        --version $Version `
+        --minimum-version $MinimumVersion
+    Write-Host "普通更新包已生成：$UpdateArchive"
+}

@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app_meta import APP_VERSION
-from runtime_paths import model_path, web_index_path
+from runtime_paths import available_asr_models, web_index_path
 from services.douyin_login import LoginManager, clear_cookie
 from services.download_service import download_video, parse_video_info, open_video_stream
 from services.download_tasks import DownloadTaskManager
@@ -49,6 +49,7 @@ class ParseVideoRequest(BaseModel):
 class TranscriptionRequest(BaseModel):
     url: str = Field(min_length=1)
     session_id: str | None = None
+    model: str = "small"
 
 
 @app.get("/")
@@ -62,7 +63,7 @@ def health() -> dict:
         "status": "ok",
         "has_cookie": bool(login_manager.get_cookie()),
         "version": APP_VERSION,
-        "asr_model_ready": model_path().is_dir(),
+        "asr_model_ready": bool(available_asr_models()),
         "transcription_busy": transcription_task_manager.is_busy(),
     }
 
@@ -191,8 +192,16 @@ def create_transcription_task(payload: TranscriptionRequest) -> dict:
     cookie = login_manager.get_cookie(payload.session_id)
     if not cookie:
         raise HTTPException(status_code=401, detail="请先扫码登录抖音")
-    task = transcription_task_manager.create_task(payload.url, cookie=cookie)
+    available_ids = {item["id"] for item in available_asr_models()}
+    if payload.model not in available_ids:
+        raise HTTPException(status_code=400, detail=f"本地 ASR 模型不可用：{payload.model}")
+    task = transcription_task_manager.create_task(payload.url, cookie=cookie, model=payload.model)
     return task.snapshot()
+
+
+@app.get("/asr/models")
+def list_asr_models() -> list[dict]:
+    return available_asr_models()
 
 
 @app.get("/transcription/tasks")

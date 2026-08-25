@@ -13,8 +13,12 @@ CORE_FILES = {
     "models/faster-whisper-small/config.json",
     "models/faster-whisper-small/model.bin",
     "models/faster-whisper-small/tokenizer.json",
+    "models/faster-whisper-medium/config.json",
+    "models/faster-whisper-medium/model.bin",
+    "models/faster-whisper-medium/tokenizer.json",
 }
-NONEMPTY_DIRECTORIES = {"_internal", "browsers"}
+NONEMPTY_DIRECTORIES = {"browsers"}
+RUNTIME_DIRECTORIES = ("_internal", "runtime/python")
 
 
 def missing_core_paths(bundle: str | Path) -> set[str]:
@@ -24,6 +28,12 @@ def missing_core_paths(bundle: str | Path) -> set[str]:
         directory = root / relative
         if not directory.is_dir() or not any(item.is_file() for item in directory.rglob("*")):
             missing.add(relative)
+    if not any(
+        (root / relative).is_dir()
+        and any(item.is_file() for item in (root / relative).rglob("*"))
+        for relative in RUNTIME_DIRECTORIES
+    ):
+        missing.add("_internal|runtime/python")
     return missing
 
 

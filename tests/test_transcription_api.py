@@ -50,8 +50,10 @@ class FakeTranscriptionManager:
         done_dir = self.root / "done"
         done_dir.mkdir(parents=True)
         (done_dir / "transcript.txt").write_text("中文文案", encoding="utf-8")
+        self.create_calls = []
 
-    def create_task(self, url, *, cookie):
+    def create_task(self, url, *, cookie, model):
+        self.create_calls.append((url, cookie, model))
         task = FakeTask("created")
         self.tasks[task.task_id] = task
         return task
@@ -99,14 +101,50 @@ class TranscriptionApiTests(unittest.TestCase):
     def test_create_returns_queued_task_snapshot(self):
         self.login_manager.cookie = "sessionid=abc"
 
-        response = self.client.post(
-            "/transcription/tasks",
-            json={"url": "https://v.douyin.com/demo"},
-        )
+        with mock.patch.object(
+            api_server,
+            "available_asr_models",
+            return_value=[{"id": "small", "label": "Small", "description": "速度优先", "is_default": True}],
+        ):
+            response = self.client.post(
+                "/transcription/tasks",
+                json={"url": "https://v.douyin.com/demo"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["task_id"], "created")
         self.assertEqual(response.json()["status"], "queued")
+        self.assertEqual(
+            self.task_manager.create_calls,
+            [("https://v.douyin.com/demo", "sessionid=abc", "small")],
+        )
+
+    def test_available_models_endpoint_only_returns_local_models(self):
+        expected = [
+            {
+                "id": "medium",
+                "label": "Medium",
+                "description": "效果更好，识别速度较慢",
+                "is_default": False,
+            }
+        ]
+        with mock.patch.object(api_server, "available_asr_models", return_value=expected):
+            response = self.client.get("/asr/models")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected)
+
+    def test_create_rejects_model_that_is_not_available_locally(self):
+        self.login_manager.cookie = "sessionid=abc"
+        with mock.patch.object(api_server, "available_asr_models", return_value=[]):
+            response = self.client.post(
+                "/transcription/tasks",
+                json={"url": "https://v.douyin.com/demo", "model": "medium"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "本地 ASR 模型不可用：medium")
+        self.assertEqual(self.task_manager.create_calls, [])
 
     def test_list_and_detail_return_persisted_tasks(self):
         listed = self.client.get("/transcription/tasks")
@@ -138,10 +176,11 @@ class TranscriptionApiTests(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "text/plain; charset=utf-8")
 
     def test_health_exposes_version_model_and_queue_state(self):
-        response = self.client.get("/health")
+        with mock.patch.object(api_server, "available_asr_models", return_value=[]):
+            response = self.client.get("/health")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.1.0")
+        self.assertEqual(response.json()["version"], "1.2.0")
         self.assertFalse(response.json()["asr_model_ready"])
         self.assertTrue(response.json()["transcription_busy"])
 
