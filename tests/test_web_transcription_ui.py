@@ -49,6 +49,8 @@ class WebTranscriptionUiTests(unittest.TestCase):
         self.assertTrue(any(attrs.get("for") == "transcriptionUrl" for attrs in labels))
         self.assertEqual(self.find_by_id("transcriptionStatus")[1]["aria-live"], "polite")
         self.find_by_id("transcriptionProgressFill")
+        _, result_attrs = self.find_by_id("transcriptResult")
+        self.assertNotIn("hidden", result_attrs)
         self.find_by_id("transcriptText")
         self.find_by_id("transcriptSegments")
         self.find_by_id("copyTranscriptBtn")

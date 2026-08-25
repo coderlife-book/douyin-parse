@@ -715,6 +715,11 @@
       white-space: nowrap;
     }
 
+    .button-link[aria-disabled="true"] {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
     .transcript-text {
       margin: 18px 0;
       color: #232722;
@@ -958,18 +963,18 @@
             </div>
           </section>
 
-          <article id="transcriptResult" class="transcript-result" hidden>
+          <article id="transcriptResult" class="transcript-result">
             <header class="transcript-head">
               <div>
                 <h2 id="transcriptTitle">识别结果</h2>
-                <div id="transcriptMeta" class="small"></div>
+                <div id="transcriptMeta" class="small">等待字幕任务完成</div>
               </div>
               <div class="row wrap">
-                <button id="copyTranscriptBtn" type="button">复制全文</button>
-                <a id="downloadTranscriptBtn" class="button-link" href="#">下载 TXT</a>
+                <button id="copyTranscriptBtn" type="button" disabled>复制全文</button>
+                <a id="downloadTranscriptBtn" class="button-link" href="#" aria-disabled="true">下载 TXT</a>
               </div>
             </header>
-            <div id="transcriptText" class="transcript-text"></div>
+            <div id="transcriptText" class="transcript-text">识别完成后，完整文案和带时间的真实分段会显示在这里。</div>
             <ol id="transcriptSegments" class="transcript-segments"></ol>
           </article>
         </div>
@@ -1787,6 +1792,8 @@
       el.transcriptMeta.textContent = metadata.join(" · ");
       el.transcriptText.textContent = task.text || "未识别到文案";
       el.downloadTranscriptBtn.href = `/transcription/tasks/${encodeURIComponent(task.task_id)}/text`;
+      el.downloadTranscriptBtn.setAttribute("aria-disabled", "false");
+      el.copyTranscriptBtn.disabled = false;
       el.transcriptSegments.innerHTML = "";
       (task.segments || []).forEach(segment => {
         const row = document.createElement("li");
@@ -1885,7 +1892,14 @@
       el.transcribeBtn.disabled = true;
       el.transcribeBtn.classList.add("loading");
       el.transcribeBtn.textContent = "识别中";
-      el.transcriptResult.hidden = true;
+      el.transcriptResult.hidden = false;
+      el.transcriptTitle.textContent = "识别结果";
+      el.transcriptMeta.textContent = "任务处理中";
+      el.transcriptText.textContent = "正在等待模型返回真实语音分段...";
+      el.transcriptSegments.innerHTML = "";
+      el.copyTranscriptBtn.disabled = true;
+      el.downloadTranscriptBtn.href = "#";
+      el.downloadTranscriptBtn.setAttribute("aria-disabled", "true");
       setStatus(el.transcriptionStatus, "正在创建字幕任务...");
       try {
         const task = await requestJson("/transcription/tasks", {
