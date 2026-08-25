@@ -3,3 +3,4 @@ playwright
 gmssl
 fastapi
 uvicorn[standard]
+faster-whisper
