@@ -23,6 +23,7 @@ downloads/
 .idea/
 *.swp
 *.swo
+.worktrees/
 
 # 日志
 logs/
