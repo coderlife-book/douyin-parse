@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>抖音本地下载服务</title>
+  <title>抖音视频与文案工具</title>
   <style>
     :root {
       --bg: #f3efe7;
@@ -616,12 +616,176 @@
       color: var(--muted);
     }
 
+    .business-tabs {
+      display: inline-flex;
+      gap: 6px;
+      margin-top: 22px;
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 252, 245, 0.72);
+      box-shadow: 0 14px 42px rgba(60, 42, 20, 0.1);
+      backdrop-filter: blur(14px);
+    }
+
+    .business-tab {
+      min-width: 132px;
+      min-height: 44px;
+      color: var(--muted);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .business-tab:hover {
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.64);
+    }
+
+    .business-tab.active {
+      color: #fffaf0;
+      background: var(--ink);
+      box-shadow: 0 10px 24px rgba(27, 26, 23, 0.18);
+    }
+
+    .tab-panel[hidden],
+    .transcript-result[hidden] {
+      display: none;
+    }
+
+    .field-label {
+      color: var(--muted);
+      font: 700 13px/1.4 "PingFang SC", sans-serif;
+    }
+
+    .transcription-workspace {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .transcription-kicker {
+      margin: 0;
+      color: var(--accent-dark);
+      font: 800 12px/1 "Menlo", monospace;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .transcription-intro {
+      margin: 0;
+      color: var(--muted);
+      font: 14px/1.7 "PingFang SC", sans-serif;
+    }
+
+    .transcript-result {
+      min-height: 272px;
+      border: 1px solid rgba(38, 112, 91, 0.22);
+      border-radius: 22px;
+      padding: 20px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(244, 247, 239, 0.72)),
+        repeating-linear-gradient(0deg, transparent 0 31px, rgba(38, 112, 91, 0.05) 31px 32px);
+    }
+
+    .transcript-head {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .transcript-head h2 {
+      margin: 0 0 5px;
+    }
+
+    .button-link {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      padding: 0 16px;
+      color: white;
+      background: var(--green);
+      font: 700 14px/1 "PingFang SC", sans-serif;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .transcript-text {
+      margin: 18px 0;
+      color: #232722;
+      font: 17px/2 "Songti SC", "Noto Serif SC", serif;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .transcript-segments {
+      display: grid;
+      gap: 8px;
+      max-height: 280px;
+      margin: 0;
+      padding: 0;
+      overflow: auto;
+      list-style: none;
+    }
+
+    .transcript-segment {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 12px;
+      padding: 9px 11px;
+      border-radius: 12px;
+      background: rgba(38, 112, 91, 0.06);
+      font: 13px/1.6 "PingFang SC", sans-serif;
+    }
+
+    .segment-time {
+      color: var(--green);
+      font: 12px/1.6 "Menlo", monospace;
+    }
+
+    .transcript-task-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 250, 240, 0.78);
+    }
+
+    .transcript-task-main {
+      min-width: 0;
+    }
+
+    .transcript-task-title {
+      overflow: hidden;
+      color: var(--ink);
+      font: 700 14px/1.5 "PingFang SC", sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .transcript-task-meta {
+      color: var(--muted);
+      font: 12px/1.5 "Menlo", "PingFang SC", sans-serif;
+    }
+
     @media (max-width: 900px) {
       .shell {
         padding: 20px 0;
       }
 
       .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .transcription-workspace {
         grid-template-columns: 1fr;
       }
 
@@ -641,6 +805,21 @@
       h1 {
         margin-top: 34px;
       }
+
+      .business-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+      }
+
+      .business-tab {
+        min-width: 0;
+      }
+
+      .transcript-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
     }
   </style>
 </head>
@@ -649,8 +828,8 @@
     <section class="hero">
       <div class="brand">
         <div class="eyebrow"><span class="dot"></span><span>127.0.0.1 本地服务</span></div>
-        <h1>登录抖音，直接下载视频。</h1>
-        <p class="subtitle">这个页面只调用当前机器上的 API 服务。Cookie 保存在本机，视频解析和下载都通过本地进程完成。</p>
+        <h1>视频留下，声音变成文字。</h1>
+        <p class="subtitle">下载和字幕识别都在当前电脑完成。Cookie、视频和文案保存在本机，不上传到第三方转写服务。</p>
       </div>
 
       <div class="panel stack">
@@ -696,7 +875,13 @@
       </div>
     </section>
 
-    <section class="panel stack" style="margin-top: 22px;">
+    <nav class="business-tabs" role="tablist" aria-label="业务功能">
+      <button class="business-tab active" type="button" role="tab" data-tab="download" aria-selected="true" aria-controls="downloadTab">视频下载</button>
+      <button class="business-tab" type="button" role="tab" data-tab="transcription" aria-selected="false" aria-controls="transcriptionTab">字幕解析</button>
+    </nav>
+
+    <section id="downloadTab" class="tab-panel" role="tabpanel">
+    <section class="panel stack" style="margin-top: 14px;">
       <section class="card stack">
         <h2 id="downloadHeading">3. 输入链接并选择清晰度</h2>
         <div class="row">
@@ -749,6 +934,56 @@
         </div>
       </section>
     </section>
+    </section>
+
+    <section id="transcriptionTab" class="tab-panel" role="tabpanel" hidden>
+      <section class="panel stack" style="margin-top: 14px;">
+        <div class="transcription-workspace">
+          <section class="card stack">
+            <p class="transcription-kicker">Local ASR · CPU INT8</p>
+            <h2>把视频里的声音，整理成可复制文案</h2>
+            <p class="transcription-intro">粘贴单条抖音视频链接。程序会临时下载视频，在本机使用 small 模型识别语音，完成后自动删除临时媒体。</p>
+            <label class="field-label" for="transcriptionUrl">抖音视频链接</label>
+            <div class="row">
+              <input id="transcriptionUrl" placeholder="粘贴 https://v.douyin.com/..." autocomplete="off">
+              <button id="transcribeBtn" class="primary" type="button" disabled>开始识别</button>
+            </div>
+            <div id="transcriptionStatus" class="status" aria-live="polite">等待输入链接</div>
+            <div id="transcriptionProgress" class="download-progress">
+              <div class="progress-track"><div id="transcriptionProgressFill" class="progress-fill"></div></div>
+              <div class="progress-meta">
+                <span id="transcriptionProgressText">0%</span>
+                <span id="transcriptionTime">等待识别</span>
+              </div>
+            </div>
+          </section>
+
+          <article id="transcriptResult" class="transcript-result" hidden>
+            <header class="transcript-head">
+              <div>
+                <h2 id="transcriptTitle">识别结果</h2>
+                <div id="transcriptMeta" class="small"></div>
+              </div>
+              <div class="row wrap">
+                <button id="copyTranscriptBtn" type="button">复制全文</button>
+                <a id="downloadTranscriptBtn" class="button-link" href="#">下载 TXT</a>
+              </div>
+            </header>
+            <div id="transcriptText" class="transcript-text"></div>
+            <ol id="transcriptSegments" class="transcript-segments"></ol>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel stack" style="margin-top: 22px;">
+        <section class="card stack">
+          <h2>最近文案</h2>
+          <div id="transcriptionTaskList" class="task-list">
+            <div class="task-empty">还没有字幕识别记录</div>
+          </div>
+        </section>
+      </section>
+    </section>
 
     <div class="footer">服务地址：<code>http://127.0.0.1:8787</code></div>
   </main>
@@ -763,6 +998,9 @@
       selectedQuality: "",
       tasks: [],
       bgPollers: {},
+      transcriptionTasks: [],
+      transcriptionPollers: {},
+      activeTranscript: null,
     };
 
     const el = {
@@ -799,6 +1037,23 @@
       author: document.getElementById("author"),
       aweme: document.getElementById("aweme"),
       taskList: document.getElementById("taskList"),
+      businessTabs: document.querySelectorAll(".business-tab"),
+      tabPanels: document.querySelectorAll(".tab-panel"),
+      transcriptionUrl: document.getElementById("transcriptionUrl"),
+      transcribeBtn: document.getElementById("transcribeBtn"),
+      transcriptionStatus: document.getElementById("transcriptionStatus"),
+      transcriptionProgress: document.getElementById("transcriptionProgress"),
+      transcriptionProgressFill: document.getElementById("transcriptionProgressFill"),
+      transcriptionProgressText: document.getElementById("transcriptionProgressText"),
+      transcriptionTime: document.getElementById("transcriptionTime"),
+      transcriptResult: document.getElementById("transcriptResult"),
+      transcriptTitle: document.getElementById("transcriptTitle"),
+      transcriptMeta: document.getElementById("transcriptMeta"),
+      transcriptText: document.getElementById("transcriptText"),
+      transcriptSegments: document.getElementById("transcriptSegments"),
+      copyTranscriptBtn: document.getElementById("copyTranscriptBtn"),
+      downloadTranscriptBtn: document.getElementById("downloadTranscriptBtn"),
+      transcriptionTaskList: document.getElementById("transcriptionTaskList"),
     };
 
     function headers(json = false) {
@@ -826,6 +1081,7 @@
         el.loginBtn.disabled = true;
         el.parseBtn.disabled = true;
         el.downloadBtn.disabled = true;
+        el.transcribeBtn.disabled = true;
         el.loginCard.style.display = "";
         el.logoutRow.style.display = "none";
         el.downloadHeading.textContent = "3. 输入链接并选择清晰度";
@@ -841,6 +1097,7 @@
         el.cookieValue.textContent = "已检测";
         el.parseBtn.disabled = false;
         el.downloadBtn.disabled = !state.parsed;
+        el.transcribeBtn.disabled = false;
         el.loginCard.style.display = "none";
         el.logoutRow.style.display = "";
         el.loginHint.className = "login-hint active";
@@ -855,6 +1112,7 @@
       el.cookieValue.textContent = "未检测";
       el.parseBtn.disabled = true;
       el.downloadBtn.disabled = true;
+      el.transcribeBtn.disabled = true;
       el.loginCard.style.display = "";
       el.logoutRow.style.display = "none";
       el.downloadHeading.textContent = "3. 输入链接并选择清晰度";
@@ -1484,17 +1742,214 @@
       }
     }
 
+    const ACTIVE_TRANSCRIPTION_STATUSES = new Set(["queued", "downloading", "loading_model", "transcribing"]);
+
+    function activateTab(name) {
+      el.businessTabs.forEach(tab => {
+        const active = tab.dataset.tab === name;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", String(active));
+      });
+      el.tabPanels.forEach(panel => {
+        panel.hidden = panel.id !== `${name}Tab`;
+      });
+    }
+
+    function formatDuration(value) {
+      const total = Math.max(0, Math.floor(Number(value) || 0));
+      const minutes = Math.floor(total / 60);
+      const seconds = String(total % 60).padStart(2, "0");
+      return `${minutes}:${seconds}`;
+    }
+
+    function upsertTranscriptionTask(remote) {
+      const index = state.transcriptionTasks.findIndex(item => item.task_id === remote.task_id);
+      if (index === -1) state.transcriptionTasks.unshift(remote);
+      else state.transcriptionTasks[index] = { ...state.transcriptionTasks[index], ...remote };
+      state.transcriptionTasks.sort((left, right) => (right.updated_at || 0) - (left.updated_at || 0));
+    }
+
+    function updateTranscriptionProgress(task) {
+      const progress = Math.max(0, Math.min(100, task.progress || 0));
+      el.transcriptionProgress.classList.add("show");
+      el.transcriptionProgressFill.style.width = `${progress}%`;
+      el.transcriptionProgressText.textContent = `${progress}%`;
+      const processed = formatDuration(task.processed_duration || 0);
+      const duration = formatDuration(task.duration || 0);
+      el.transcriptionTime.textContent = task.duration ? `${processed} / ${duration} · ${task.segment_count || 0} 段` : (task.message || "准备识别");
+    }
+
+    function renderTranscript(task) {
+      state.activeTranscript = task;
+      el.transcriptResult.hidden = false;
+      el.transcriptTitle.textContent = task.desc || "识别结果";
+      const metadata = [task.author_nickname, task.duration ? `${formatDuration(task.duration)} · ${task.segment_count || 0} 段` : ""].filter(Boolean);
+      el.transcriptMeta.textContent = metadata.join(" · ");
+      el.transcriptText.textContent = task.text || "未识别到文案";
+      el.downloadTranscriptBtn.href = `/transcription/tasks/${encodeURIComponent(task.task_id)}/text`;
+      el.transcriptSegments.innerHTML = "";
+      (task.segments || []).forEach(segment => {
+        const row = document.createElement("li");
+        row.className = "transcript-segment";
+        const time = document.createElement("span");
+        time.className = "segment-time";
+        time.textContent = `${formatDuration(segment.start)}–${formatDuration(segment.end)}`;
+        const text = document.createElement("span");
+        text.textContent = segment.text;
+        row.append(time, text);
+        el.transcriptSegments.appendChild(row);
+      });
+    }
+
+    function renderTranscriptionTasks() {
+      el.transcriptionTaskList.innerHTML = "";
+      if (!state.transcriptionTasks.length) {
+        const empty = document.createElement("div");
+        empty.className = "task-empty";
+        empty.textContent = "还没有字幕识别记录";
+        el.transcriptionTaskList.appendChild(empty);
+        return;
+      }
+
+      state.transcriptionTasks.forEach(task => {
+        const row = document.createElement("div");
+        row.className = "transcript-task-item";
+        const main = document.createElement("div");
+        main.className = "transcript-task-main";
+        const title = document.createElement("div");
+        title.className = "transcript-task-title";
+        title.textContent = task.desc || task.source_url || "未命名视频";
+        const meta = document.createElement("div");
+        meta.className = "transcript-task-meta";
+        const stage = task.status === "done" ? `已完成 · ${task.segment_count || 0} 段` : (task.message || task.status);
+        meta.textContent = [task.author_nickname, stage].filter(Boolean).join(" · ");
+        const open = document.createElement("button");
+        open.type = "button";
+        open.textContent = task.status === "done" ? "查看文案" : "查看进度";
+        open.addEventListener("click", () => showTranscriptionTask(task.task_id));
+        main.append(title, meta);
+        row.append(main, open);
+        el.transcriptionTaskList.appendChild(row);
+      });
+    }
+
+    async function showTranscriptionTask(taskId) {
+      try {
+        const task = await requestJson(`/transcription/tasks/${encodeURIComponent(taskId)}`, { headers: headers() });
+        upsertTranscriptionTask(task);
+        updateTranscriptionProgress(task);
+        renderTranscriptionTasks();
+        if (task.status === "done") renderTranscript(task);
+        else setStatus(el.transcriptionStatus, task.message || "正在处理", ACTIVE_TRANSCRIPTION_STATUSES.has(task.status) ? "running" : "bad");
+      } catch (error) {
+        setStatus(el.transcriptionStatus, error.message, "bad");
+      }
+    }
+
+    async function pollTranscriptionTask(taskId, focus = false) {
+      if (state.transcriptionPollers[taskId]) return;
+      state.transcriptionPollers[taskId] = true;
+      try {
+        for (;;) {
+          const task = await requestJson(`/transcription/tasks/${encodeURIComponent(taskId)}`, { headers: headers() });
+          upsertTranscriptionTask(task);
+          renderTranscriptionTasks();
+          if (focus || (state.activeTranscript && state.activeTranscript.task_id === taskId)) {
+            updateTranscriptionProgress(task);
+            setStatus(el.transcriptionStatus, task.message || "正在处理", ACTIVE_TRANSCRIPTION_STATUSES.has(task.status) ? "running" : "");
+          }
+          if (!ACTIVE_TRANSCRIPTION_STATUSES.has(task.status)) {
+            if (task.status === "done" && focus) {
+              renderTranscript(task);
+              setStatus(el.transcriptionStatus, "字幕识别完成", "ok");
+            } else if (task.status !== "done" && focus) {
+              setStatus(el.transcriptionStatus, task.message || task.error || "字幕识别失败", "bad");
+            }
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 700));
+        }
+      } catch (error) {
+        if (focus) setStatus(el.transcriptionStatus, error.message, "bad");
+      } finally {
+        delete state.transcriptionPollers[taskId];
+      }
+    }
+
+    async function createTranscription() {
+      const url = el.transcriptionUrl.value.trim();
+      if (!url) {
+        setStatus(el.transcriptionStatus, "请先输入抖音链接", "bad");
+        return;
+      }
+      el.transcribeBtn.disabled = true;
+      el.transcribeBtn.classList.add("loading");
+      el.transcribeBtn.textContent = "识别中";
+      el.transcriptResult.hidden = true;
+      setStatus(el.transcriptionStatus, "正在创建字幕任务...");
+      try {
+        const task = await requestJson("/transcription/tasks", {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ url, session_id: state.sessionId || null }),
+        });
+        upsertTranscriptionTask(task);
+        updateTranscriptionProgress(task);
+        renderTranscriptionTasks();
+        await pollTranscriptionTask(task.task_id, true);
+      } catch (error) {
+        setStatus(el.transcriptionStatus, error.message, "bad");
+      } finally {
+        el.transcribeBtn.disabled = !state.hasCookie;
+        el.transcribeBtn.classList.remove("loading");
+        el.transcribeBtn.textContent = "开始识别";
+      }
+    }
+
+    async function copyTranscript() {
+      const text = state.activeTranscript && state.activeTranscript.text;
+      if (!text) {
+        setStatus(el.transcriptionStatus, "当前没有可复制的文案", "bad");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus(el.transcriptionStatus, "文案已复制", "ok");
+      } catch (error) {
+        setStatus(el.transcriptionStatus, `复制失败：${error.message}`, "bad");
+      }
+    }
+
+    async function loadTranscriptionTasks() {
+      try {
+        state.transcriptionTasks = await requestJson("/transcription/tasks", { headers: headers() });
+        renderTranscriptionTasks();
+        state.transcriptionTasks.filter(task => ACTIVE_TRANSCRIPTION_STATUSES.has(task.status)).forEach(task => pollTranscriptionTask(task.task_id));
+        const latestDone = state.transcriptionTasks.find(task => task.status === "done");
+        if (latestDone) await showTranscriptionTask(latestDone.task_id);
+      } catch (error) {
+        setStatus(el.transcriptionStatus, `历史文案加载失败：${error.message}`, "bad");
+      }
+    }
+
+    el.businessTabs.forEach(tab => tab.addEventListener("click", () => activateTab(tab.dataset.tab)));
     el.loginBtn.addEventListener("click", createLoginSession);
     el.logoutBtn.addEventListener("click", doLogout);
     el.refreshStatusBtn.addEventListener("click", refreshLoginStatus);
     el.parseBtn.addEventListener("click", parseVideo);
     el.downloadBtn.addEventListener("click", downloadVideo);
+    el.transcribeBtn.addEventListener("click", createTranscription);
+    el.copyTranscriptBtn.addEventListener("click", copyTranscript);
     el.videoUrl.addEventListener("keydown", event => {
       if (event.key === "Enter") parseVideo();
+    });
+    el.transcriptionUrl.addEventListener("keydown", event => {
+      if (event.key === "Enter") createTranscription();
     });
 
     checkHealth();
     restoreTasks();
+    loadTranscriptionTasks();
   </script>
 </body>
 </html>
