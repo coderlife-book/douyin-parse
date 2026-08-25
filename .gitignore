@@ -8,6 +8,7 @@ __pycache__/
 dist/
 build/
 *.spec
+!packaging/windows/*.spec
 
 # 配置文件（包含敏感信息）
 config.json
