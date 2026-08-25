@@ -13,13 +13,13 @@ TOOLS_ROOT = Path(__file__).resolve().parents[1]
 if str(TOOLS_ROOT) not in sys.path:
     sys.path.insert(0, str(TOOLS_ROOT))
 
-from update_manifest import EXCLUDED_TOP_LEVEL, build_manifest
+from update_manifest import ALLOWED_UPDATE_TOP_LEVEL, EXCLUDED_TOP_LEVEL, build_manifest
 
 
 def copy_core_payload(bundle: Path, payload: Path) -> None:
     payload.mkdir(parents=True, exist_ok=True)
     for source in sorted(bundle.iterdir()):
-        if source.name in EXCLUDED_TOP_LEVEL:
+        if source.name in EXCLUDED_TOP_LEVEL or source.name not in ALLOWED_UPDATE_TOP_LEVEL:
             continue
         destination = payload / source.name
         if source.is_dir():

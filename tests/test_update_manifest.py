@@ -33,12 +33,14 @@ class UpdateManifestTests(unittest.TestCase):
         self.write("抖音视频工具.exe", b"exe")
         self.write("web/index.html", b"html")
         self.write("config.json", b"cookie")
+        self.write("douyin_cookie.txt", b"legacy-cookie")
         self.write("data/transcripts/a/manifest.json", b"private")
         self.write("downloads/video.mp4", b"video")
         self.write("models/faster-whisper-small/model.bin", b"model")
         self.write("browsers/chromium/chrome.exe", b"browser")
         self.write("一键更新.bat", b"bat")
-        self.write("更新工具.ps1", b"powershell")
+        self.write("updater.ps1", b"powershell")
+        self.write("unexpected.bin", b"must-not-ship")
 
         manifest = self.manifest_module.build_manifest(self.root, "1.1.1", "1.1.0")
 
@@ -77,6 +79,8 @@ class UpdatePackageTests(unittest.TestCase):
             self.write(bundle, "version.json", b'{"version":"1.1.1"}')
             self.write(bundle, "models/faster-whisper-small/model.bin", b"model")
             self.write(bundle, "data/transcripts/one/manifest.json", b"private")
+            self.write(bundle, "douyin_cookie.txt", b"legacy-cookie")
+            self.write(bundle, "unexpected.bin", b"must-not-ship")
 
             package_module.create_update_package(
                 bundle,

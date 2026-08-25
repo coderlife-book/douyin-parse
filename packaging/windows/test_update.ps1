@@ -32,9 +32,21 @@ try {
         --bundle $NewBundle --output $UpdateZip --version 1.1.1 --minimum-version 1.1.0
     if ($LASTEXITCODE -ne 0) { throw "生成测试更新包失败" }
 
-    $PowerShell = (Get-Process -Id $PID).Path
-    & $PowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "更新工具.ps1") `
+    $PowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL = "1"
+    & $PowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "updater.ps1") `
         -InstallRoot $InstallRoot -Package $UpdateZip -NoRestart
+    if ($LASTEXITCODE -eq 0) { throw "故障注入更新未按预期失败" }
+    Remove-Item Env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL
+    if ((Get-Content -Raw (Join-Path $InstallRoot "抖音视频工具.exe")).Trim() -ne "old-exe") { throw "失败更新未恢复 EXE" }
+    if (-not (Test-Path (Join-Path $InstallRoot "_internal\old.dll"))) { throw "失败更新未恢复运行时" }
+
+    Copy-Item -Force $UpdateZip (Join-Path $InstallRoot ([IO.Path]::GetFileName($UpdateZip)))
+    Copy-Item -Force (Join-Path $PSScriptRoot "updater.ps1") (Join-Path $InstallRoot "updater.ps1")
+    $OneClickBatch = Join-Path $InstallRoot "一键更新.bat"
+    Copy-Item -Force (Join-Path $PSScriptRoot "一键更新.bat") $OneClickBatch
+    $BatchCommand = 'echo.|call "' + $OneClickBatch + '"'
+    & $env:ComSpec /d /s /c $BatchCommand
     if ($LASTEXITCODE -ne 0) { throw "更新器测试执行失败" }
 
     if ((Get-Content -Raw (Join-Path $InstallRoot "抖音视频工具.exe")).Trim() -ne "new-exe") { throw "EXE 未更新" }
@@ -44,5 +56,6 @@ try {
     if (-not (Test-Path (Join-Path $InstallRoot "_rollback\抖音视频工具.exe"))) { throw "旧版本未保留到回滚目录" }
     Write-Host "Windows offline updater OK"
 } finally {
+    Remove-Item Env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL -ErrorAction SilentlyContinue
     if (Test-Path $TestRoot) { Remove-Item -Recurse -Force $TestRoot }
 }

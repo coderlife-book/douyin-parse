@@ -476,7 +476,7 @@ class DesktopLauncherTests(unittest.TestCase):
 
 class WindowsPackagingTests(unittest.TestCase):
     def test_bundle_contract_keeps_large_assets_outside_internal(self):
-        required = {"抖音视频工具.exe", "models/faster-whisper-small/config.json", "browsers", "web/index.html", "一键更新.bat", "更新工具.ps1"}
+        required = {"抖音视频工具.exe", "models/faster-whisper-small/config.json", "browsers", "web/index.html", "一键更新.bat", "updater.ps1"}
         self.assertEqual(verify_bundle.missing_paths(self.bundle, required), set())
 ```
 
@@ -550,7 +550,7 @@ git commit -m "build(windows): 增加绿色版可执行程序构建"
 **Files:**
 - Create: `packaging/update_manifest.py`
 - Create: `packaging/windows/一键更新.bat`
-- Create: `packaging/windows/更新工具.ps1`
+- Create: `packaging/windows/updater.ps1`
 - Create: `packaging/windows/build_update_package.py`
 - Test: `tests/test_update_manifest.py`
 - Test: `tests/test_update_scripts.py`
@@ -614,7 +614,7 @@ ZIP 根目录只包含 `update-manifest.json` 和 `payload/`。构建顺序按�
 @echo off
 setlocal
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0更新工具.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0updater.ps1"
 set "UPDATE_EXIT=%ERRORLEVEL%"
 echo.
 if not "%UPDATE_EXIT%"=="0" echo 更新失败，错误码：%UPDATE_EXIT%
@@ -622,7 +622,7 @@ pause
 exit /b %UPDATE_EXIT%
 ```
 
-`更新工具.ps1` 选择最高版本 ZIP，先检查 ZIP entry 不含绝对路径或 `..`，再解压到同盘 `update-temp`；逐项核对清单大小和 SHA-256；结束目标 EXE；把当前核心移动到 `_rollback`；移动新核心；二次校验。任一步骤抛出异常都恢复 `_rollback`，且脚本中的受保护名称集合固定为 `config.json,data,downloads,models,browsers`。
+`updater.ps1` 选择最高版本 ZIP，先检查 ZIP entry 不含绝对路径或 `..`，再解压到同盘临时目录；逐项核对清单大小和 SHA-256；结束目标 EXE；先完整备份当前核心，再移动新核心；二次校验。任一步骤抛出异常都只删除已安装的新核心并恢复实际已备份项；受保护集合包含 Cookie、数据、下载、模型、浏览器和更新器自身，更新负载同时受核心顶层白名单约束。
 
 - [ ] **Step 5: 运行更新逻辑测试**
 
@@ -633,7 +633,7 @@ Expected: PASS，清单不包含用户数据，BAT 调用 PowerShell，脚本包
 - [ ] **Step 6: 提交**
 
 ```bash
-git add packaging/update_manifest.py packaging/windows/一键更新.bat packaging/windows/更新工具.ps1 packaging/windows/build_update_package.py packaging/windows/build.ps1 tests/test_update_manifest.py tests/test_update_scripts.py
+git add packaging/update_manifest.py packaging/windows/一键更新.bat packaging/windows/updater.ps1 packaging/windows/build_update_package.py packaging/windows/build.ps1 tests/test_update_manifest.py tests/test_update_scripts.py
 git commit -m "feat(update): 增加离线校验与一键回滚更新"
 ```
 

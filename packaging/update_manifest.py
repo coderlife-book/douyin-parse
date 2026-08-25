@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 
 EXCLUDED_TOP_LEVEL = {
     "config.json",
+    "douyin_cookie.txt",
     "data",
     "downloads",
     "models",
@@ -13,7 +14,15 @@ EXCLUDED_TOP_LEVEL = {
     "_rollback",
     "update-temp",
     "一键更新.bat",
-    "更新工具.ps1",
+    "updater.ps1",
+}
+
+ALLOWED_UPDATE_TOP_LEVEL = {
+    "_internal",
+    "web",
+    "抖音视频工具.exe",
+    "version.json",
+    "版本说明.txt",
 }
 
 
@@ -48,7 +57,7 @@ def build_manifest(
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         relative = path.relative_to(root).as_posix()
         validated = validate_relative_path(relative)
-        if validated.parts[0] in EXCLUDED_TOP_LEVEL:
+        if validated.parts[0] in EXCLUDED_TOP_LEVEL or validated.parts[0] not in ALLOWED_UPDATE_TOP_LEVEL:
             continue
         files.append(
             {

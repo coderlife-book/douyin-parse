@@ -1,7 +1,9 @@
 import importlib.util
 import sys
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -35,3 +37,37 @@ class RuntimeEntrypointTests(unittest.TestCase):
             runtime.build_service_url("127.0.0.1", 8787, "/health"),
             "http://127.0.0.1:8787/health",
         )
+
+    def test_background_server_passes_asgi_app_object_to_uvicorn(self):
+        runtime = load_module("server_runtime_app_module", ROOT_DIR / "server_runtime.py")
+        asgi_app = object()
+
+        class FakeServer:
+            should_exit = False
+
+            def __init__(self, config):
+                self.config = config
+
+            def run(self):
+                return None
+
+        fake_uvicorn = types.SimpleNamespace(
+            Config=mock.Mock(return_value=object()),
+            Server=FakeServer,
+        )
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "api_server": types.SimpleNamespace(app=asgi_app),
+                "uvicorn": fake_uvicorn,
+            },
+        ), mock.patch.object(runtime, "is_service_ready", side_effect=[False, True]):
+            handle = runtime.start_background_server(timeout=0.1)
+
+        fake_uvicorn.Config.assert_called_once_with(
+            asgi_app,
+            host="127.0.0.1",
+            port=8787,
+            log_level="info",
+        )
+        runtime.stop_background_server(handle)

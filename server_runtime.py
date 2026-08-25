@@ -60,8 +60,9 @@ def start_background_server(
         return None
 
     import uvicorn
+    from api_server import app
 
-    config = uvicorn.Config("api_server:app", host=host, port=port, log_level=log_level)
+    config = uvicorn.Config(app, host=host, port=port, log_level=log_level)
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, name="douyin-api-server", daemon=True)
     thread.start()
@@ -83,8 +84,9 @@ def stop_background_server(handle: ServerHandle | None, timeout: float = 5) -> N
 
 def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, log_level: str = "info") -> None:
     import uvicorn
+    from api_server import app
 
-    uvicorn.run("api_server:app", host=host, port=port, log_level=log_level)
+    uvicorn.run(app, host=host, port=port, log_level=log_level)
 
 
 def main() -> None:

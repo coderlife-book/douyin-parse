@@ -100,7 +100,7 @@ data/transcripts/<task-id>/
 ├── data/                       # 首次运行创建，不随更新覆盖
 ├── downloads/                  # 首次下载创建，不随更新覆盖
 ├── 一键更新.bat
-├── 更新工具.ps1
+├── updater.ps1
 └── 版本说明.txt
 ```
 
@@ -136,7 +136,7 @@ PyInstaller 不能在当前 macOS 环境直接生成 Windows 可执行文件，�
 
 ### 一键更新流程
 
-同事将更新 ZIP 放在程序根目录，双击 `一键更新.bat`。BAT 只负责调用同目录的 `更新工具.ps1`，更新逻辑由 Windows 自带 PowerShell 执行：
+同事将更新 ZIP 放在程序根目录，双击 `一键更新.bat`。BAT 内容保持纯 ASCII，只负责调用同目录的 `updater.ps1`，避免 Win10 默认代码页误读中文脚本路径；更新逻辑由 Windows 自带 PowerShell 执行：
 
 1. 确认根目录内只有一个匹配的更新 ZIP，或选择版本号最高的一个。
 2. 结束正在运行的 `抖音视频工具.exe`。

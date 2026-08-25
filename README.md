@@ -86,7 +86,7 @@ Windows 产物必须在 Windows 环境构建。macOS 不能直接生成或验收
 3. 更新器结束正在运行的工具，校验清单、文件大小和 SHA-256，再替换程序核心。
 4. 成功后自动重新启动；失败会恢复 `_rollback/` 中的旧核心。
 
-普通更新不会覆盖 `config.json`、`data/`、`downloads/`、`models/`、`browsers/`、`一键更新.bat` 或 `更新工具.ps1`。
+普通更新不会覆盖 `config.json`、`douyin_cookie.txt`、`data/`、`downloads/`、`models/`、`browsers/`、`一键更新.bat` 或 `updater.ps1`。
 
 ## API
 

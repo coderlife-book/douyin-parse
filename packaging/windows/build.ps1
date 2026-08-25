@@ -2,6 +2,9 @@ param([string]$MinimumVersion = "1.1.0")
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw "PowerShell 7 or newer is required to build the Windows bundle."
+}
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $BuildRoot = Join-Path $ProjectRoot "build"
@@ -40,12 +43,13 @@ Copy-Item -Recurse -Force (Join-Path $ProjectRoot "web") (Join-Path $BundleRoot 
 Copy-Item -Recurse -Force (Join-Path $AssetsRoot "models") (Join-Path $BundleRoot "models")
 Copy-Item -Recurse -Force (Join-Path $AssetsRoot "browsers") (Join-Path $BundleRoot "browsers")
 Copy-Item -Force (Join-Path $PSScriptRoot "一键更新.bat") (Join-Path $BundleRoot "一键更新.bat")
-Copy-Item -Force (Join-Path $PSScriptRoot "更新工具.ps1") (Join-Path $BundleRoot "更新工具.ps1")
+Copy-Item -Force (Join-Path $PSScriptRoot "updater.ps1") (Join-Path $BundleRoot "updater.ps1")
 
 $Version = (& $Python -c "from app_meta import APP_VERSION; print(APP_VERSION)").Trim()
 "抖音视频工具 v$Version`r`nCPU small 离线字幕版" | Set-Content -Encoding UTF8 (Join-Path $BundleRoot "版本说明.txt")
 @{ version = $Version; update_protocol = 1 } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $BundleRoot "version.json")
 & $Python packaging\windows\verify_bundle.py $BundleRoot
+& (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File packaging\windows\test_bundle_runtime.ps1 -Bundle $BundleRoot
 
 $Archive = Join-Path $ReleaseRoot "抖音视频工具-v$Version-win64.zip"
 if (Test-Path $Archive) { Remove-Item -Force $Archive }

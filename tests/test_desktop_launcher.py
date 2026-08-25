@@ -61,6 +61,15 @@ class DesktopLauncherTests(unittest.TestCase):
 
             self.assertEqual(os.environ["PLAYWRIGHT_BROWSERS_PATH"], str(browser_dir.resolve()))
 
+    def test_launcher_can_skip_browser_for_windows_smoke_test(self):
+        with mock.patch.dict(os.environ, {"DOUYIN_PARSE_NO_BROWSER": "1"}), mock.patch.object(
+            desktop_launcher, "start_background_server", return_value=None
+        ), mock.patch.object(desktop_launcher.webbrowser, "open") as open_browser:
+            exit_code = desktop_launcher.main()
+
+        self.assertEqual(exit_code, 0)
+        open_browser.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

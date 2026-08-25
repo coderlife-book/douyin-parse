@@ -8,7 +8,7 @@ CORE_FILES = {
     "抖音视频工具.exe",
     "version.json",
     "一键更新.bat",
-    "更新工具.ps1",
+    "updater.ps1",
     "web/index.html",
     "models/faster-whisper-small/config.json",
     "models/faster-whisper-small/model.bin",

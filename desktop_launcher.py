@@ -28,7 +28,8 @@ def wait_until_exit() -> None:
 def main() -> int:
     configure_bundled_browser()
     handle = start_background_server()
-    webbrowser.open(build_service_url(DEFAULT_HOST, DEFAULT_PORT))
+    if os.environ.get("DOUYIN_PARSE_NO_BROWSER") != "1":
+        webbrowser.open(build_service_url(DEFAULT_HOST, DEFAULT_PORT))
     if handle is None:
         return 0
     try:

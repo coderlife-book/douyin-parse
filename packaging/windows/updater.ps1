@@ -6,23 +6,31 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+function Join-UnicodeChars {
+    param([int[]]$CodePoints)
+    return -join @($CodePoints | ForEach-Object { [char]$_ })
+}
+
+$ExecutableName = (Join-UnicodeChars @(0x6296, 0x97F3, 0x89C6, 0x9891, 0x5DE5, 0x5177)) + ".exe"
+$ReleaseNotesName = (Join-UnicodeChars @(0x7248, 0x672C, 0x8BF4, 0x660E)) + ".txt"
 $ProtectedNames = @(
-    "config.json", "data", "downloads", "models", "browsers",
-    "一键更新.bat", "更新工具.ps1", "_rollback", "update-temp"
+    "config.json", "douyin_cookie.txt", "data", "downloads", "models", "browsers",
+    "updater.ps1", "_rollback"
 )
-$ExecutableName = "抖音视频工具.exe"
+$AllowedCoreNames = @("_internal", "web", $ExecutableName, "version.json", $ReleaseNotesName)
 
 function Resolve-UpdatePackage {
     param([string]$Root, [string]$ExplicitPackage)
     if ($ExplicitPackage) {
         return (Resolve-Path $ExplicitPackage).Path
     }
-    $Candidates = Get-ChildItem -Path $Root -Filter "更新包-v*.zip" -File | ForEach-Object {
-        if ($_.BaseName -match '^更新包-v(?<version>\d+\.\d+\.\d+)$') {
+    $Candidates = Get-ChildItem -Path $Root -Filter "*.zip" -File | ForEach-Object {
+        if ($_.BaseName -match '-v(?<version>\d+\.\d+\.\d+)$') {
             [PSCustomObject]@{ File = $_; Version = [version]$Matches.version }
         }
     } | Sort-Object Version -Descending
-    if (-not $Candidates) { throw "程序目录中没有找到 更新包-vX.Y.Z.zip" }
+    if (-not $Candidates) { throw "No update package matching *-vX.Y.Z.zip was found." }
     return $Candidates[0].File.FullName
 }
 
@@ -34,9 +42,10 @@ function Assert-SafeRelativePath {
         $Normalized.StartsWith('/') -or
         $Normalized -match '^[A-Za-z]:' -or
         $Normalized -match '(^|/)\.\.(/|$)'
-    ) { throw "更新包包含非法路径：$RelativePath" }
+    ) { throw "Unsafe update path: $RelativePath" }
     $TopLevel = ($Normalized -split '/')[0]
-    if ($ProtectedNames -contains $TopLevel) { throw "更新包试图覆盖受保护数据：$TopLevel" }
+    if ($ProtectedNames -contains $TopLevel) { throw "Protected path in update payload: $TopLevel" }
+    if ($AllowedCoreNames -notcontains $TopLevel) { throw "Unexpected top-level update path: $TopLevel" }
     return $Normalized
 }
 
@@ -51,7 +60,7 @@ function Assert-SafeZipEntries {
                 $Name.StartsWith('/') -or
                 $Name -match '^[A-Za-z]:' -or
                 $Name -match '(^|/)\.\.(/|$)'
-            ) { throw "更新 ZIP 包含非法路径：$Name" }
+            ) { throw "Unsafe ZIP path: $Name" }
         }
     } finally {
         $Archive.Dispose()
@@ -66,13 +75,13 @@ function Assert-ManifestFiles {
         $ExpectedPaths += $Relative
         $FullPath = Join-Path $Root ($Relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
         if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) {
-            throw "更新文件不存在：$Relative"
+            throw "Missing update file: $Relative"
         }
         $ActualSize = (Get-Item -LiteralPath $FullPath).Length
-        if ($ActualSize -ne [long]$File.size) { throw "更新文件大小校验失败：$Relative" }
+        if ($ActualSize -ne [long]$File.size) { throw "Update size mismatch: $Relative" }
         $ActualHash = (Get-FileHash -LiteralPath $FullPath -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($ActualHash -ne ([string]$File.sha256).ToLowerInvariant()) {
-            throw "更新文件哈希校验失败：$Relative"
+            throw "Update hash mismatch: $Relative"
         }
     }
     if ($RequireExactSet) {
@@ -80,19 +89,25 @@ function Assert-ManifestFiles {
             $_.FullName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
         })
         $Difference = Compare-Object ($ExpectedPaths | Sort-Object) ($ActualPaths | Sort-Object)
-        if ($Difference) { throw "更新负载包含未登记文件" }
+        if ($Difference) { throw "Update payload contains unregistered files." }
     }
 }
 
 function Restore-Rollback {
-    param([string]$Root, [string]$RollbackRoot, [string[]]$CoreNames)
-    foreach ($Name in $CoreNames) {
+    param(
+        [string]$Root,
+        [string]$RollbackRoot,
+        [string[]]$InstalledNames,
+        [string[]]$BackedUpNames
+    )
+    foreach ($Name in $InstalledNames) {
         $Current = Join-Path $Root $Name
         if (Test-Path -LiteralPath $Current) { Remove-Item -LiteralPath $Current -Recurse -Force }
     }
-    if (Test-Path -LiteralPath $RollbackRoot) {
-        Get-ChildItem -LiteralPath $RollbackRoot -Force | ForEach-Object {
-            Move-Item -LiteralPath $_.FullName -Destination $Root -Force
+    foreach ($Name in $BackedUpNames) {
+        $Backup = Join-Path $RollbackRoot $Name
+        if (Test-Path -LiteralPath $Backup) {
+            Move-Item -LiteralPath $Backup -Destination $Root -Force
         }
     }
 }
@@ -106,16 +121,16 @@ function Invoke-OfflineUpdate {
     $TempRoot = Join-Path $Root ("update-temp-" + [guid]::NewGuid().ToString('N'))
     $RollbackRoot = Join-Path $Root "_rollback"
     New-Item -ItemType Directory -Path $TempRoot | Out-Null
-    $CoreNames = @()
-    $ReplacementStarted = $false
+    $BackedUpNames = @()
+    $InstalledNames = @()
     try {
         Expand-Archive -LiteralPath $PackagePath -DestinationPath $TempRoot -Force
         $ManifestPath = Join-Path $TempRoot "update-manifest.json"
         $PayloadRoot = Join-Path $TempRoot "payload"
-        if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { throw "更新包缺少 update-manifest.json" }
-        if (-not (Test-Path -LiteralPath $PayloadRoot -PathType Container)) { throw "更新包缺少 payload 目录" }
+        if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { throw "Missing update-manifest.json." }
+        if (-not (Test-Path -LiteralPath $PayloadRoot -PathType Container)) { throw "Missing payload directory." }
         $Manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ([int]$Manifest.protocol -ne 1) { throw "不支持的更新协议：$($Manifest.protocol)" }
+        if ([int]$Manifest.protocol -ne 1) { throw "Unsupported update protocol: $($Manifest.protocol)" }
         Assert-ManifestFiles $PayloadRoot $Manifest $true
 
         $CurrentVersionPath = Join-Path $Root "version.json"
@@ -126,8 +141,8 @@ function Invoke-OfflineUpdate {
         }
         $TargetVersion = [version]$Manifest.version
         $MinimumVersion = [version]$Manifest.minimum_version
-        if ($TargetVersion -le $CurrentVersion) { throw "目标版本 $TargetVersion 不高于当前版本 $CurrentVersion" }
-        if ($CurrentVersion -lt $MinimumVersion) { throw "当前版本 $CurrentVersion 低于最低升级版本 $MinimumVersion" }
+        if ($TargetVersion -le $CurrentVersion) { throw "Target version must be newer than current version." }
+        if ($CurrentVersion -lt $MinimumVersion) { throw "Current version is below the minimum update version." }
 
         $CoreNames = @($Manifest.files | ForEach-Object {
             (Assert-SafeRelativePath ([string]$_.path) -split '/')[0]
@@ -137,19 +152,30 @@ function Invoke-OfflineUpdate {
 
         if (Test-Path -LiteralPath $RollbackRoot) { Remove-Item -LiteralPath $RollbackRoot -Recurse -Force }
         New-Item -ItemType Directory -Path $RollbackRoot | Out-Null
-        $ReplacementStarted = $true
         foreach ($Name in $CoreNames) {
             $Current = Join-Path $Root $Name
-            $Replacement = Join-Path $PayloadRoot $Name
             if (Test-Path -LiteralPath $Current) {
                 Move-Item -LiteralPath $Current -Destination $RollbackRoot -Force
+                $BackedUpNames += $Name
             }
+        }
+
+        $TestFailAfter = -1
+        if ($env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL) {
+            $TestFailAfter = [int]$env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL
+        }
+        foreach ($Name in $CoreNames) {
+            $Replacement = Join-Path $PayloadRoot $Name
             Move-Item -LiteralPath $Replacement -Destination $Root -Force
+            $InstalledNames += $Name
+            if ($TestFailAfter -ge 0 -and $InstalledNames.Count -ge $TestFailAfter) {
+                throw "Injected update failure."
+            }
         }
         Assert-ManifestFiles $Root $Manifest $false
-        Write-Host "更新成功：$CurrentVersion -> $TargetVersion" -ForegroundColor Green
+        Write-Host "Update succeeded: $CurrentVersion -> $TargetVersion" -ForegroundColor Green
     } catch {
-        if ($ReplacementStarted) { Restore-Rollback $Root $RollbackRoot $CoreNames }
+        Restore-Rollback $Root $RollbackRoot $InstalledNames $BackedUpNames
         throw
     } finally {
         if (Test-Path -LiteralPath $TempRoot) { Remove-Item -LiteralPath $TempRoot -Recurse -Force }
@@ -159,7 +185,7 @@ function Invoke-OfflineUpdate {
 try {
     $ResolvedRoot = (Resolve-Path $InstallRoot).Path
     $ResolvedPackage = Resolve-UpdatePackage $ResolvedRoot $Package
-    Write-Host "正在校验更新包：$ResolvedPackage"
+    Write-Host "Validating update package: $ResolvedPackage"
     Invoke-OfflineUpdate $ResolvedRoot $ResolvedPackage
     if (-not $NoRestart) {
         $Executable = Join-Path $ResolvedRoot $ExecutableName
@@ -167,6 +193,6 @@ try {
     }
     exit 0
 } catch {
-    Write-Host ("更新失败：" + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ("Update failed: " + $_.Exception.Message) -ForegroundColor Red
     exit 1
 }

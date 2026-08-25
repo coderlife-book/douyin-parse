@@ -16,7 +16,7 @@ Windows 绿色版必须在 Windows 10/11 x64 或 GitHub Actions `windows-latest`
 ├── version.json
 ├── 版本说明.txt
 ├── 一键更新.bat
-└── 更新工具.ps1
+└── updater.ps1
 ```
 
 `config.json`、`data/` 和 `downloads/` 由程序首次运行创建，不允许打入发布包。
@@ -32,11 +32,10 @@ Windows 绿色版必须在 Windows 10/11 x64 或 GitHub Actions `windows-latest`
 
 ## Windows 本机构建
 
-使用已安装 Python 3.12 的 Windows PowerShell：
+使用已安装 Python 3.12 和 PowerShell 7 的 Windows 构建机（目标同事电脑运行绿色版和更新器不需要安装这些环境）：
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-./packaging/windows/build.ps1 -MinimumVersion "1.1.0"
+pwsh -ExecutionPolicy Bypass -File ./packaging/windows/build.ps1 -MinimumVersion "1.1.0"
 ```
 
 构建脚本使用 `requirements-windows.lock`，模型固定为：
