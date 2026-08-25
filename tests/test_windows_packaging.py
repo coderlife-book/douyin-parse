@@ -24,6 +24,9 @@ class WindowsPackagingTests(unittest.TestCase):
             self.write(bundle, "抖音视频工具.exe", b"exe")
             self.write(bundle, "_internal/python312.dll", b"python")
             self.write(bundle, "web/index.html", b"html")
+            self.write(bundle, "version.json", b'{"version":"1.1.0"}')
+            self.write(bundle, "一键更新.bat", b"bat")
+            self.write(bundle, "更新工具.ps1", b"powershell")
             self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
             self.write(bundle, "models/faster-whisper-small/model.bin", b"model")
             self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
@@ -38,6 +41,9 @@ class WindowsPackagingTests(unittest.TestCase):
             self.write(bundle, "抖音视频工具.exe", b"exe")
             self.write(bundle, "_internal/python312.dll", b"python")
             self.write(bundle, "web/index.html", b"html")
+            self.write(bundle, "version.json", b'{"version":"1.1.0"}')
+            self.write(bundle, "一键更新.bat", b"bat")
+            self.write(bundle, "更新工具.ps1", b"powershell")
             self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
             self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
             self.write(bundle, "browsers/chromium/chrome.exe", b"browser")
@@ -46,6 +52,22 @@ class WindowsPackagingTests(unittest.TestCase):
                 verifier.missing_core_paths(bundle),
                 {"models/faster-whisper-small/model.bin"},
             )
+
+    def test_missing_updater_script_is_reported(self):
+        verifier = load_verifier()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundle = Path(temp_dir)
+            self.write(bundle, "抖音视频工具.exe", b"exe")
+            self.write(bundle, "_internal/python312.dll", b"python")
+            self.write(bundle, "web/index.html", b"html")
+            self.write(bundle, "version.json", b'{"version":"1.1.0"}')
+            self.write(bundle, "一键更新.bat", b"bat")
+            self.write(bundle, "models/faster-whisper-small/config.json", b"{}")
+            self.write(bundle, "models/faster-whisper-small/model.bin", b"model")
+            self.write(bundle, "models/faster-whisper-small/tokenizer.json", b"{}")
+            self.write(bundle, "browsers/chromium/chrome.exe", b"browser")
+
+            self.assertEqual(verifier.missing_core_paths(bundle), {"更新工具.ps1"})
 
     @staticmethod
     def write(root, relative, content):

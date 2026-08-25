@@ -2,6 +2,11 @@ name: build-windows-portable
 
 on:
   workflow_dispatch:
+    inputs:
+      minimum_version:
+        description: Minimum installed version accepted by the update package
+        required: true
+        default: "1.1.0"
 
 jobs:
   build:
@@ -16,7 +21,7 @@ jobs:
           cache-dependency-path: requirements-windows.lock
       - name: Build portable Windows bundle
         shell: pwsh
-        run: ./packaging/windows/build.ps1
+        run: ./packaging/windows/build.ps1 -MinimumVersion "${{ inputs.minimum_version }}"
       - name: Upload portable bundle
         uses: actions/upload-artifact@v4
         with:
