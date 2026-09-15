@@ -9,6 +9,12 @@ from douyin_video_parser import DouyinVideoParser
 from services.douyin_login import DEFAULT_SAVE_DIR
 
 
+def _parse_failed() -> ValueError:
+    # 解析链路已知失败都会抛带具体原因的 DouyinParseError；
+    # 走到这里说明拿到了数据但结构异常，属于兜底
+    return ValueError("解析结果异常：未能从抖音获取到可用的视频数据，请稍后重试或更换链接")
+
+
 def safe_filename(text: str, fallback: str) -> str:
     text = text or ""
     text = re.sub(r"[\\/:*?\"<>|]", "_", text).strip()
@@ -101,7 +107,7 @@ def parse_video_info(share_url: str, *, cookie: str) -> dict:
     parser.set_cookie(cookie)
     info = parser.parse_video(share_url)
     if not info:
-        raise ValueError("解析失败，请确认链接有效且 Cookie 未过期")
+        raise _parse_failed()
     if info.get("content_type") != "video":
         raise ValueError("当前页面只支持视频，不支持图集")
     return serialize_video_info(info)
@@ -119,7 +125,7 @@ def download_video(
     parser.set_cookie(cookie)
     info = parser.parse_video(share_url)
     if not info:
-        raise ValueError("解析失败，请确认链接有效且 Cookie 未过期")
+        raise _parse_failed()
 
     if info.get("content_type") != "video":
         raise ValueError("当前接口只支持下载视频，不支持图集")
@@ -203,7 +209,7 @@ def open_video_stream(
     parser.set_cookie(cookie)
     info = parser.parse_video(share_url)
     if not info:
-        raise ValueError("解析失败，请确认链接有效且 Cookie 未过期")
+        raise _parse_failed()
     if info.get("content_type") != "video":
         raise ValueError("当前接口只支持预览视频，不支持图集")
 

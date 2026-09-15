@@ -3,6 +3,7 @@ Douyin watermark-free video parser (requests + a_bogus + X-Bogus)
 Input: share URL, Output: watermark-free video URL
 """
 
+import hashlib
 import json
 import os
 import re
@@ -168,12 +169,105 @@ def _infer_quality_ratio(bit_rate_info: dict) -> str:
     return _definition_from_bitrate(bit_rate_info.get("bit_rate", 0) or 0)
 
 
+# ---- Argus 风控签名（x-secsdk-web-signature） ----
+# 2026-09 起 www.douyin.com 的 ArgusSecurityPlugin 对缺少网页 SDK 签名的
+# 请求一律回 403 "Blocked by ArgusSecurityPlugin Uifid Not Found"（与 Cookie
+# 无关）。需要按 secsdk webSignUrl 的算法在 query 追加 uifid / timestamp，
+# 并携带签名头：
+#     sig = md5(f"{uifid}_{timestamp}_{SALT}_{query}")
+# SALT 取自抖音 secsdk 捆绑包（project-id=34，douyin_web）的 VM 字符串表，
+# 抖音升级 SDK 时可能更换。算法来源：
+# https://github.com/Evil0ctal/Douyin_TikTok_Download_API
+# （src/dtk/signing/native/websign.py，2026-09-08 在 aweme/detail 实测通过）
+WEB_SIGN_SALT = "A96D855A08C0A9707F8BEF0D9A527E4E"
+WEB_SIGNATURE_PARAM = "x-secsdk-web-signature"
+
+# 抖音在这些 status_code 上表示"未登录/Cookie 失效"，其余非零码多为
+# 作品不存在、删除或不可见
+_LOGIN_REQUIRED_STATUS_CODES = {2483}
+
+
+class DouyinParseError(ValueError):
+    """解析失败，message 面向用户，说明具体原因。"""
+
+# SDK 在 Cookie 里按此优先级找访客 id，取第一个非空值
+_UIFID_COOKIE_NAMES = (
+    "uifid",
+    "uifid_temp",
+    "uifidtemp",
+    "UIFID",
+    "UIFID_TEMP",
+    "UIFIDTEMP",
+)
+
+
+def extract_uifid(cookie: str) -> str | None:
+    values = {}
+    for part in (cookie or "").split(";"):
+        name, sep, value = part.strip().partition("=")
+        if sep and value:
+            values.setdefault(name, value)
+    for name in _UIFID_COOKIE_NAMES:
+        if values.get(name):
+            return values[name]
+    return None
+
+
+def encode_query_pairs(pairs) -> str:
+    """按 JS URLSearchParams.toString() 的转义规则编码 query。
+
+    签名覆盖的字符串必须与实际发送的 query 逐字节一致，除字母数字和
+    `*-._` 外一律百分号转义。
+    """
+    return "&".join(
+        f"{quote(str(key), safe='*-._')}={quote(str(value), safe='*-._')}"
+        for key, value in pairs
+    )
+
+
+def build_websigned_request(
+    api_url: str,
+    params: dict,
+    headers: dict,
+    *,
+    cookie: str,
+    timestamp: int | None = None,
+) -> tuple[str, dict] | None:
+    """为请求追加 uifid / timestamp 并计算 Argus 签名。
+
+    返回 (完整 URL, 追加过签名头的 headers)。Cookie 中没有 UIFID 时返回
+    None，调用方退回普通请求。params 中已有的 uifid 保留原位置不重复。
+    """
+    uifid = extract_uifid(cookie)
+    if not uifid:
+        return None
+
+    stamp = str(int(time.time() if timestamp is None else timestamp))
+    pairs = [(str(key), str(value)) for key, value in params.items()]
+    if not any(key == "uifid" for key, _value in pairs):
+        pairs.append(("uifid", uifid))
+    pairs.append(("timestamp", stamp))
+
+    query = encode_query_pairs(pairs)
+    signature = hashlib.md5(
+        f"{uifid}_{stamp}_{WEB_SIGN_SALT}_{query}".encode()
+    ).hexdigest()
+
+    signed_headers = dict(headers)
+    signed_headers["uifid"] = uifid
+    signed_headers[WEB_SIGNATURE_PARAM] = signature
+    signed_headers["x-secsdk-web-expire"] = stamp
+
+    return f"{api_url}?{query}&{WEB_SIGNATURE_PARAM}={signature}", signed_headers
+
+
 class DouyinVideoParser:
     def __init__(self):
+        # 与请求参数里的 browser_version 保持一致，指纹自洽更不易被风控标记
         self.user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/90.0.4430.212 Safari/537.36"
+            "Chrome/130.0.0.0 Safari/537.36"
         )
         self.cookie = self._load_cookie()
 
@@ -234,7 +328,7 @@ class DouyinVideoParser:
         })
         try:
             resp = session.get(extracted_url, allow_redirects=True, timeout=15)
-            real_url = resp.url
+            real_url = resp.url or ""
             
             # 从重定向后的URL提取ID
             for pattern in patterns:
@@ -264,15 +358,27 @@ class DouyinVideoParser:
                     # 验证ID是否为纯数字且长度合理（通常19位）
                     if video_id.isdigit() and len(video_id) >= 15:
                         return video_id
-            
-            return None
-        except Exception as e:
-            # 如果请求失败，返回None
-            return None
+
+            raise DouyinParseError(
+                "无法识别视频链接：链接已打开但里面找不到视频，"
+                "请确认这是抖音视频/图集的分享链接"
+            )
+        except requests.Timeout:
+            raise DouyinParseError("链接访问超时：请检查网络后重试，或直接粘贴完整视频链接")
+        except requests.RequestException as exc:
+            if isinstance(exc, (requests.exceptions.MissingSchema, requests.exceptions.InvalidURL)):
+                raise DouyinParseError(
+                    "无法识别视频链接：请粘贴抖音 App 分享出来的链接"
+                ) from exc
+            raise DouyinParseError(
+                "链接无法访问：网络异常或链接无效，请检查网络后重试"
+            ) from exc
 
     def get_aweme_detail(self, video_id: str, original_url: str = None) -> dict | None:
         if ABogus is None:
-            return None
+            raise DouyinParseError(
+                "签名模块不可用：程序缺少 abogus 相关依赖，请重新安装依赖后重启"
+            )
 
         params = {
             "device_platform": "webapp",
@@ -298,9 +404,11 @@ class DouyinVideoParser:
 
         try:
             a_bogus = ABogus().get_value(params)
-            params["a_bogus"] = quote(a_bogus, safe="")
-        except Exception:
-            return None
+            params["a_bogus"] = a_bogus
+        except Exception as exc:
+            raise DouyinParseError(
+                "生成请求签名失败：请重试；若持续出现请更新程序"
+            ) from exc
 
         # Determine referer: check if original_url contains /note/ or try both
         is_note = False
@@ -329,29 +437,101 @@ class DouyinVideoParser:
         
         return result
 
-    def _request_json(self, api_url: str, params: dict, headers: dict) -> dict | None:
-        # 先试 a_bogus
-        try:
-            resp = requests.get(api_url, params=params, headers=headers, timeout=10)
-            if resp.status_code == 200 and resp.content:
-                return resp.json()
-        except Exception:
-            pass
+    def _request_json(
+        self,
+        api_url: str,
+        params: dict,
+        headers: dict,
+        *,
+        data_key: str = "aweme_detail",
+    ) -> dict | None:
+        attempts: list[tuple[dict, str | None]] = [(dict(params), None)]
+        if XBogus is not None:
+            try:
+                param_str = "&".join([f"{k}={v}" for k, v in params.items()])
+                xb_value = XBogus(self.user_agent).getXBogus(param_str)
+                xb_params = dict(params)
+                xb_params["X-Bogus"] = xb_value[1]
+                attempts.append(
+                    (xb_params, f"{api_url}?{param_str}&X-Bogus={xb_value[1]}")
+                )
+            except Exception:
+                pass
 
-        # 再试 X-Bogus
-        if XBogus is None:
-            return None
-        try:
-            param_str = "&".join([f"{k}={v}" for k, v in params.items()])
-            xb_value = XBogus(self.user_agent).getXBogus(param_str)
-            xb_url = f"{api_url}?{param_str}&X-Bogus={xb_value[1]}"
-            resp = requests.get(xb_url, headers=headers, timeout=10)
-            if resp.status_code == 200 and resp.content:
-                return resp.json()
-        except Exception:
-            return None
+        def _fetch(signed_params: dict, fallback_url: str | None):
+            signed = build_websigned_request(
+                api_url, signed_params, headers, cookie=self.cookie
+            )
+            if signed:
+                url, signed_headers = signed
+                return requests.get(url, headers=signed_headers, timeout=10)
+            if fallback_url:
+                return requests.get(fallback_url, headers=headers, timeout=10)
+            return requests.get(
+                api_url, params=signed_params, headers=headers, timeout=10
+            )
 
-        return None
+        network_error = DouyinParseError("网络请求失败：请检查本机网络后重试")
+        for signed_params, fallback_url in attempts:
+            try:
+                resp = _fetch(signed_params, fallback_url)
+            except requests.Timeout:
+                network_error = DouyinParseError(
+                    "请求抖音超时：请检查网络后重试"
+                )
+                continue
+            except requests.RequestException:
+                continue
+            # HTTP 层的成败都是确定性的（Argus 拒绝重试无效），直接归类
+            return self._classify_response(resp, data_key)
+
+        raise network_error
+
+    @staticmethod
+    def _classify_response(resp, data_key: str) -> dict | None:
+        """把抖音响应归类为成功数据或具体失败原因。
+
+        成功返回 JSON dict；确定性失败抛 DouyinParseError，message 直接
+        展示给用户。
+        """
+        if resp.status_code == 403 and "ArgusSecurityPlugin" in resp.text:
+            raise DouyinParseError(
+                "请求被抖音风控拦截（签名校验未通过）："
+                "程序签名方案可能需要更新，请联系维护者"
+            )
+        if resp.status_code == 429:
+            raise DouyinParseError(
+                "请求过于频繁被抖音限流：请稍等一分钟再试"
+            )
+        if resp.status_code != 200:
+            raise DouyinParseError(
+                f"抖音接口暂时不可用（HTTP {resp.status_code}），请稍后重试"
+            )
+
+        try:
+            data = resp.json()
+        except ValueError:
+            raise DouyinParseError(
+                "抖音返回了异常内容（可能触发验证码）：请稍后重试"
+            ) from None
+
+        if isinstance(data, dict):
+            if data.get(data_key) is not None:
+                return data
+            status_code = data.get("status_code")
+            status_msg = str(data.get("status_msg") or "")
+            if status_code in _LOGIN_REQUIRED_STATUS_CODES or "登录" in status_msg:
+                raise DouyinParseError(
+                    "Cookie 已失效：请在页面上重新扫码登录"
+                )
+            if status_code:
+                raise DouyinParseError(
+                    f"抖音返回错误（status_code={status_code}）："
+                    "作品可能不存在、已删除或暂不可见"
+                )
+        raise DouyinParseError(
+            "抖音未返回作品数据：作品可能不存在、已删除或暂不可见"
+        )
 
     @staticmethod
     def get_content_type(data: dict) -> str:
@@ -731,23 +911,20 @@ class DouyinVideoParser:
             nwm_url = qualities[0]["url"] if qualities else None
             result["nwm_url"] = nwm_url
             result["qualities"] = qualities
-            # If no video data found, return None
+            # If no video data found, raise with specific reason
             if not nwm_url and not qualities:
-                return None
+                raise DouyinParseError(
+                    "已获取作品信息，但未找到视频播放地址：作品可能受限，请换个作品试试"
+                )
         elif content_type == "image":
             # Album: return image_data
             image_data = self.extract_image_data(data)
             if image_data:
                 result["image_data"] = image_data
             else:
-                # Debug: Check what fields are available
-                aweme = data.get("aweme_detail") or {}
-                aweme_type = aweme.get("aweme_type", 0)
-                has_images = bool(aweme.get("images"))
-                # If identified as image but no image data found, return None
-                # But first try to see if we can extract from other structures
-                # Some live albums might have different structure
-                return None
+                raise DouyinParseError(
+                    "该作品是图集且数据不完整：当前页面只支持视频，暂不支持图集下载"
+                )
         
         return result
 
@@ -885,11 +1062,11 @@ class DouyinVideoParser:
             if ABogus is not None:
                 try:
                     a_bogus = ABogus().get_value(params)
-                    params["a_bogus"] = quote(a_bogus, safe="")
+                    params["a_bogus"] = a_bogus
                 except Exception:
                     pass
 
-            data = self._request_json(api_url, params, headers)
+            data = self._request_json(api_url, params, headers, data_key="aweme_list")
             if not data:
                 break
 
