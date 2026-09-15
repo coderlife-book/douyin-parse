@@ -44,14 +44,15 @@ class UpdateManifestTests(unittest.TestCase):
 
         manifest = self.manifest_module.build_manifest(self.root, "1.1.1", "1.1.0")
 
+        # updater.ps1 进包：由更新器在核心更新成功后自更新（一键更新.bat 仍不进包）
         self.assertEqual(
             [item["path"] for item in manifest["files"]],
-            ["web/index.html", "抖音视频工具.exe"],
+            ["updater.ps1", "web/index.html", "抖音视频工具.exe"],
         )
         self.assertEqual(manifest["protocol"], 1)
-        self.assertEqual(manifest["files"][1]["size"], 3)
+        self.assertEqual(manifest["files"][2]["size"], 3)
         self.assertEqual(
-            manifest["files"][1]["sha256"],
+            manifest["files"][2]["sha256"],
             hashlib.sha256(b"exe").hexdigest(),
         )
 

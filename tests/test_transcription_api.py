@@ -180,7 +180,7 @@ class TranscriptionApiTests(unittest.TestCase):
             response = self.client.get("/health")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.2.0")
+        self.assertEqual(response.json()["version"], api_server.APP_VERSION)
         self.assertFalse(response.json()["asr_model_ready"])
         self.assertTrue(response.json()["transcription_busy"])
 

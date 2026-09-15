@@ -94,11 +94,11 @@ python -m uvicorn api_server:app --host 127.0.0.1 --port 8787
 ## 离线一键更新
 
 1. 把 `更新包-vX.Y.Z.zip` 放到绿色版程序根目录。
-2. 双击根目录的 `一键更新.bat`。
+2. 双击根目录 `一键更新.bat`。
 3. 更新器结束正在运行的工具，校验清单、文件大小和 SHA-256，再替换程序核心。
 4. 成功后自动重新启动；失败会恢复 `_rollback/` 中的旧核心。
 
-普通更新不会覆盖 `config.json`、`douyin_cookie.txt`、`data/`、`downloads/`、`models/`、`browsers/`、`一键更新.bat` 或 `updater.ps1`。
+普通更新不会覆盖 `config.json`、`douyin_cookie.txt`、`data/`、`downloads/`、`models/`、`browsers/` 或 `一键更新.bat`。更新包可以携带新版 `updater.ps1`：更新器会在核心程序更新成功后最后一步自更新自己（旧版会备份进 `_rollback/`）。v1.2.1 之前的旧更新器不支持该机制，且存在顶层目录名解析缺陷；旧安装应使用 `修复包` 一次完成更新器与程序更新：把 `修复包-X.Y.Z.zip` 内全部文件解压到根目录后双击 `一键更新.bat` 即可（在子文件夹里直接双击该 bat 也可以）。
 
 首次安装必须发送完整绿色包；更新包不能代替完整包。
 

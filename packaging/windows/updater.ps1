@@ -14,11 +14,15 @@ function Join-UnicodeChars {
 
 $ExecutableName = (Join-UnicodeChars @(0x6296, 0x97F3, 0x89C6, 0x9891, 0x5DE5, 0x5177)) + ".exe"
 $ReleaseNotesName = (Join-UnicodeChars @(0x7248, 0x672C, 0x8BF4, 0x660E)) + ".txt"
+$UpdaterName = "updater.ps1"
+# updater.ps1 itself is no longer protected: it is applied by a dedicated
+# self-update step AFTER the core update succeeds (see Invoke-UpdaterSelfUpdate),
+# so future updater fixes can ship inside normal update packages.
 $ProtectedNames = @(
     "config.json", "douyin_cookie.txt", "data", "downloads", "models", "browsers", "runtime",
-    "updater.ps1", "_rollback"
+    "_rollback"
 )
-$AllowedCoreNames = @("_internal", "app", "web", $ExecutableName, "version.json", $ReleaseNotesName)
+$AllowedCoreNames = @("_internal", "app", "web", $ExecutableName, "version.json", $ReleaseNotesName, $UpdaterName)
 
 function Resolve-UpdatePackage {
     param([string]$Root, [string]$ExplicitPackage)
@@ -112,6 +116,39 @@ function Restore-Rollback {
     }
 }
 
+function Invoke-UpdaterSelfUpdate {
+    param([string]$Root, [string]$PayloadRoot, [string]$RollbackRoot)
+    # Best-effort self replacement, strictly AFTER the core update succeeded.
+    # The old updater is moved to _rollback first; if installing the new one
+    # fails, the old one is restored. A total failure only warns: the core
+    # program is already updated and this must not roll anything back.
+    $PayloadUpdater = Join-Path $PayloadRoot $UpdaterName
+    if (-not (Test-Path -LiteralPath $PayloadUpdater -PathType Leaf)) {
+        return
+    }
+    try {
+        $CurrentUpdater = Join-Path $Root $UpdaterName
+        $BackupUpdater = Join-Path $RollbackRoot $UpdaterName
+        if (Test-Path -LiteralPath $CurrentUpdater -PathType Leaf) {
+            Move-Item -LiteralPath $CurrentUpdater -Destination $BackupUpdater -Force
+        }
+        try {
+            Copy-Item -LiteralPath $PayloadUpdater -Destination $CurrentUpdater -Force
+        } catch {
+            if (
+                -not (Test-Path -LiteralPath $CurrentUpdater -PathType Leaf) -and
+                (Test-Path -LiteralPath $BackupUpdater -PathType Leaf)
+            ) {
+                Move-Item -LiteralPath $BackupUpdater -Destination $CurrentUpdater -Force
+            }
+            throw
+        }
+        Write-Host "Updater self-update succeeded."
+    } catch {
+        Write-Warning "Updater self-update failed (core program was updated); replace updater.ps1 manually."
+    }
+}
+
 function Invoke-OfflineUpdate {
     param([string]$Root, [string]$PackagePath)
     $Root = (Resolve-Path $Root).Path
@@ -144,13 +181,18 @@ function Invoke-OfflineUpdate {
         if ($TargetVersion -le $CurrentVersion) { throw "Target version must be newer than current version." }
         if ($CurrentVersion -lt $MinimumVersion) { throw "Current version is below the minimum update version." }
 
-        # 注意分步写：一行式 `(Assert-SafeRelativePath $x -split '/')[0]` 会被
-        # 解析成把 -split 结果数组传入函数，[string] 参数拼接后 [0] 取到首字符
-        # （如 "a"），导致移动不存在的 payload\a。两个引擎下都必须这样写。
+        # Compute top-level names in TWO steps on purpose. The one-liner form
+        # `(Assert-SafeRelativePath $x -split '/')[0]` gets parsed as passing
+        # the -split result ARRAY into the function; the [string] parameter
+        # joins it with spaces and [0] then yields the FIRST CHARACTER (e.g.
+        # "a"), making the updater move a non-existing payload\a. The stepwise
+        # form is unambiguous in every PowerShell engine.
+        # updater.ps1 is excluded here: it must never be moved mid-run; the
+        # self-update step owns it after everything else succeeded.
         $CoreNames = @($Manifest.files | ForEach-Object {
             $RelativePath = Assert-SafeRelativePath ([string]$_.path)
             ($RelativePath -split '/')[0]
-        } | Sort-Object -Unique)
+        } | Sort-Object -Unique | Where-Object { $_ -ne $UpdaterName })
         Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($ExecutableName)) -ErrorAction SilentlyContinue |
             Stop-Process -Force -ErrorAction SilentlyContinue
 
@@ -176,8 +218,15 @@ function Invoke-OfflineUpdate {
                 throw "Injected update failure."
             }
         }
-        Assert-ManifestFiles $Root $Manifest $false
+        # Verify everything except updater.ps1: the running updater is applied
+        # last and is not expected to match the new hash yet.
+        $CoreManifestFiles = @($Manifest.files | Where-Object {
+            ((([string]$_.path).Replace('\', '/')) -split '/')[0] -ne $UpdaterName
+        })
+        $CoreManifest = [PSCustomObject]@{ files = $CoreManifestFiles }
+        Assert-ManifestFiles $Root $CoreManifest $false
         Write-Host "Update succeeded: $CurrentVersion -> $TargetVersion" -ForegroundColor Green
+        Invoke-UpdaterSelfUpdate -Root $Root -PayloadRoot $PayloadRoot -RollbackRoot $RollbackRoot
     } catch {
         Restore-Rollback $Root $RollbackRoot $InstalledNames $BackedUpNames
         throw

@@ -15,7 +15,6 @@ EXCLUDED_TOP_LEVEL = {
     "_rollback",
     "update-temp",
     "一键更新.bat",
-    "updater.ps1",
 }
 
 ALLOWED_UPDATE_TOP_LEVEL = {
@@ -25,6 +24,10 @@ ALLOWED_UPDATE_TOP_LEVEL = {
     "抖音视频工具.exe",
     "version.json",
     "版本说明.txt",
+    # 更新器自身也允许进包：由 updater 在核心更新成功后最后一步自更新。
+    # 旧版更新器会把该条目当作受保护路径拒绝，因此携带它的更新包只能被
+    # 已支持自更新的更新器安装（首次部署新更新器仍需手动或完整包）。
+    "updater.ps1",
 }
 
 

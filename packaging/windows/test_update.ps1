@@ -27,6 +27,7 @@ try {
     Set-Content -Encoding UTF8 (Join-Path $NewBundle "_internal\new.dll") "new-runtime"
     Set-Content -Encoding UTF8 (Join-Path $NewBundle "web\index.html") "new-web"
     Set-Content -Encoding UTF8 (Join-Path $NewBundle "version.json") '{"version":"1.1.1"}'
+    Set-Content -Encoding UTF8 (Join-Path $NewBundle "updater.ps1") "new-updater"
 
     & $Python (Join-Path $PSScriptRoot "build_update_package.py") `
         --bundle $NewBundle --output $UpdateZip --version 1.1.1 --minimum-version 1.1.0
@@ -54,6 +55,8 @@ try {
     if (-not (Test-Path (Join-Path $InstallRoot "data\transcripts\keep.json"))) { throw "字幕数据被覆盖" }
     if (-not (Test-Path (Join-Path $InstallRoot "models\keep.bin"))) { throw "模型被覆盖" }
     if (-not (Test-Path (Join-Path $InstallRoot "_rollback\抖音视频工具.exe"))) { throw "旧版本未保留到回滚目录" }
+    if ((Get-Content -Raw (Join-Path $InstallRoot "updater.ps1")).Trim() -ne "new-updater") { throw "更新器未自更新" }
+    if (-not (Test-Path (Join-Path $InstallRoot "_rollback\updater.ps1"))) { throw "旧更新器未保留到回滚目录" }
 
     # 再用当前引擎（pwsh 7）完整更新一次。两个引擎对参数模式中二元运算符的
     # 解析存在差异，更新器必须在两边都正确（曾因 `-split` 并入实参导致
@@ -68,12 +71,14 @@ try {
     Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "web\index.html") "old-web"
     Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "version.json") '{"version":"1.1.0"}'
     Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "data\transcripts\keep.json") "keep-data"
+    Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "updater.ps1") "old-updater"
     $CurrentPwsh = (Get-Process -Id $PID).Path
     & $CurrentPwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "updater.ps1") `
         -InstallRoot $PwshInstallRoot -Package $UpdateZip -NoRestart
     if ($LASTEXITCODE -ne 0) { throw "pwsh 引擎更新执行失败" }
     if ((Get-Content -Raw (Join-Path $PwshInstallRoot "_internal\new.dll")).Trim() -ne "new-runtime") { throw "pwsh 引擎运行时未更新" }
     if (-not (Test-Path (Join-Path $PwshInstallRoot "data\transcripts\keep.json"))) { throw "pwsh 引擎字幕数据被覆盖" }
+    if ((Get-Content -Raw (Join-Path $PwshInstallRoot "updater.ps1")).Trim() -ne "new-updater") { throw "pwsh 引擎更新器未自更新" }
     Write-Host "Windows offline updater OK"
 } finally {
     Remove-Item Env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL -ErrorAction SilentlyContinue

@@ -64,9 +64,13 @@ python ./packaging/windows/build_update_package.py `
   --minimum-version 1.2.0
 ```
 
-普通更新包只包含已登记且带 SHA-256 的程序核心。模型、Chromium、Cookie、下载和字幕记录不进入 ZIP。
+普通更新包只包含已登记且带 SHA-256 的程序核心。模型、Chromium、Cookie、下载和字幕记录不进入 ZIP。`updater.ps1` 允许进包：更新器在核心更新成功并校验后最后一步自更新（先备份旧版到 `_rollback/`，失败仅告警不回滚核心）。`一键更新.bat` 仍不进包，只随完整包发布；新版 bat 支持从子文件夹运行并先把旁边的 `updater.ps1` 与更新包同步到安装根目录。
 
 也可以在构建完整包时追加 `-BuildUpdatePackage -MinimumVersion "1.2.0"`。首发版本不要使用该参数。
+
+## 旧安装修复包
+
+v1.2.0 及更早的更新器存在顶层目录名解析缺陷（无法安装任何含子目录的更新包），且不支持更新器自更新。旧安装用「修复包」一次完成：`修复包-X.Y.Z.zip` 内含新版 `一键更新.bat`、`updater.ps1` 和对应的 `更新包-vX.Y.Z.zip`，同事解压全部文件到根目录（或解压后在子文件夹里直接双击 bat）再执行 `一键更新.bat`。注意修复包命名不得以 `-vX.Y.Z.zip` 结尾，避免被更新器误当作更新包。
 
 ## 同事更新步骤
 
