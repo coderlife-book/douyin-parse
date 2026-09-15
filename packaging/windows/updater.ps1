@@ -144,8 +144,12 @@ function Invoke-OfflineUpdate {
         if ($TargetVersion -le $CurrentVersion) { throw "Target version must be newer than current version." }
         if ($CurrentVersion -lt $MinimumVersion) { throw "Current version is below the minimum update version." }
 
+        # 注意分步写：一行式 `(Assert-SafeRelativePath $x -split '/')[0]` 会被
+        # 解析成把 -split 结果数组传入函数，[string] 参数拼接后 [0] 取到首字符
+        # （如 "a"），导致移动不存在的 payload\a。两个引擎下都必须这样写。
         $CoreNames = @($Manifest.files | ForEach-Object {
-            (Assert-SafeRelativePath ([string]$_.path) -split '/')[0]
+            $RelativePath = Assert-SafeRelativePath ([string]$_.path)
+            ($RelativePath -split '/')[0]
         } | Sort-Object -Unique)
         Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($ExecutableName)) -ErrorAction SilentlyContinue |
             Stop-Process -Force -ErrorAction SilentlyContinue

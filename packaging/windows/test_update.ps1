@@ -54,6 +54,26 @@ try {
     if (-not (Test-Path (Join-Path $InstallRoot "data\transcripts\keep.json"))) { throw "字幕数据被覆盖" }
     if (-not (Test-Path (Join-Path $InstallRoot "models\keep.bin"))) { throw "模型被覆盖" }
     if (-not (Test-Path (Join-Path $InstallRoot "_rollback\抖音视频工具.exe"))) { throw "旧版本未保留到回滚目录" }
+
+    # 再用当前引擎（pwsh 7）完整更新一次。两个引擎对参数模式中二元运算符的
+    # 解析存在差异，更新器必须在两边都正确（曾因 `-split` 并入实参导致
+    # CoreNames 取到首字符、搬运不存在的 payload\a）。
+    $PwshInstallRoot = Join-Path $TestRoot "install-pwsh"
+    New-Item -ItemType Directory -Force -Path `
+        (Join-Path $PwshInstallRoot "_internal"), `
+        (Join-Path $PwshInstallRoot "web"), `
+        (Join-Path $PwshInstallRoot "data\transcripts") | Out-Null
+    Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "抖音视频工具.exe") "old-exe"
+    Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "_internal\old.dll") "old-runtime"
+    Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "web\index.html") "old-web"
+    Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "version.json") '{"version":"1.1.0"}'
+    Set-Content -Encoding UTF8 (Join-Path $PwshInstallRoot "data\transcripts\keep.json") "keep-data"
+    $CurrentPwsh = (Get-Process -Id $PID).Path
+    & $CurrentPwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "updater.ps1") `
+        -InstallRoot $PwshInstallRoot -Package $UpdateZip -NoRestart
+    if ($LASTEXITCODE -ne 0) { throw "pwsh 引擎更新执行失败" }
+    if ((Get-Content -Raw (Join-Path $PwshInstallRoot "_internal\new.dll")).Trim() -ne "new-runtime") { throw "pwsh 引擎运行时未更新" }
+    if (-not (Test-Path (Join-Path $PwshInstallRoot "data\transcripts\keep.json"))) { throw "pwsh 引擎字幕数据被覆盖" }
     Write-Host "Windows offline updater OK"
 } finally {
     Remove-Item Env:DOUYIN_UPDATE_TEST_FAIL_AFTER_INSTALL -ErrorAction SilentlyContinue
